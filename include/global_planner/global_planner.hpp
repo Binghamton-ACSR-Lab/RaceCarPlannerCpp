@@ -49,6 +49,9 @@ namespace acsr{
 
             casadi::Opti opti;
             auto X = opti.variable();
+            X_dot = opti.variable(nx, N)
+            U = opti.variable(nu, N)
+            dt_sym_array = opti.variable(1,N)
 
         }
 

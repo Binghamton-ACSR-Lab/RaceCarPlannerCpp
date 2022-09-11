@@ -150,13 +150,20 @@ namespace acsr{
             return dot_x;
         }
 
+        constexpr unsigned nx(){
+            return 7;
+        }
+
+        constexpr unsigned nu(){
+            return 4;
+        }
+
     protected:
         double lr,lf;
         double m,Iz;
         double cd,cm0,cm1,cm2,cbf,cbr;
 
-        const unsigned nx = 7;
-        const unsigned nu = 4;
+
 
         std::shared_ptr<Track> ptr_track;
         std::shared_ptr<front_tire_model_t> ptr_front_tire_model;
