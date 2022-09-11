@@ -18,11 +18,8 @@ int main(int argc, char **argv) {
     casadi::DM vv2{2,3,4,5};
     std::cout<<casadi::DM::vertcat({vv1.T(),vv2.T()})<<std::endl;
     //auto vv2 = v;
-    auto vv3 = casadi::DM::sqrt(vv1(0,Slice())*vv1(0,Slice())+vv1(1,Slice())*vv1(1,Slice()));
-    std::cout<<vv3<<std::endl;
-    auto vv4 = casadi::DM::repmat(vv3,2);
-    std::cout<<vv1/vv4<<std::endl;
-    Track track("tracks/temp.csv",5,true);
+
+    Track track("../data/tracks/temp.csv",5,true);
     track.plot();
     //SX tf =SX::sym("tf");
     std::vector<double> tf{10.0};

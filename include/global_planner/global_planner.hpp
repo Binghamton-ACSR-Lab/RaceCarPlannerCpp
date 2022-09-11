@@ -42,16 +42,16 @@ namespace acsr{
             track = std::make_shared<Track>(track_file,track_yaml["width"].as<double>(),track_yaml["closed"].as<bool>());
         }
 
-        void make_plan(double start_s = 0,double end_s = -1,int resolution = 100){
+        void make_plan(double start_s = 0,double end_s = -1,int N = 100){
             auto front_tire_model = std::make_shared<PacejkaSimpleModel>(front_tire_params);
             auto rear_tire_mode = std::make_shared<PacejkaSimpleModel>(rear_tire_params);
             BicycleDynamicsByParametricArc<PacejkaSimpleModel,PacejkaSimpleModel> dynamics(vehicle_params,track,front_tire_model,rear_tire_mode);
 
             casadi::Opti opti;
-            auto X = opti.variable();
-            X_dot = opti.variable(nx, N)
-            U = opti.variable(nu, N)
-            dt_sym_array = opti.variable(1,N)
+            auto X = opti.variable(dynamics.nx(),N+1);
+            auto X_dot = opti.variable(dynamics.nx(), N);
+            auto U = opti.variable(dynamics.nu(), N);
+            auto dt_sym_array = opti.variable(1,N);
 
         }
 
