@@ -116,37 +116,39 @@ namespace acsr{
             auto front_brake = u(2,Slice());
             auto rear_brake = u(3,Slice());
 
-            auto kappa = ptr_track->f_kappa(t);
-            auto phi_c = ptr_track->f_phi(t);
-            auto tangent_vec = ptr_track->f_tangent_vec(t);
+            auto kappa = ptr_track->f_kappa(t)[0];
+            auto phi_c = ptr_track->f_phi(t)[0];
+            auto tangent_vec = ptr_track->f_tangent_vec(t)[0];
             auto tangent_vec_norm = T::sqrt(tangent_vec(0,Slice())*tangent_vec(0,Slice())+tangent_vec(1,Slice())*tangent_vec(1,Slice()));
             auto Fz = casadi::DM::ones(2) * m / 2 * 9.81;
             //need work
-            auto alphaf = -casadi::atan2(omega*lf + vy, vx) + delta;
-            auto alphar = casadi::atan2(omega*lr - vy,vx);
+
+            auto alphaf = -T::atan2(omega*lf + vy, vx) + delta;
+            auto alphar = T::atan2(omega*lr - vy,vx);
 
             auto fx_f = cd * throttle - cm0 - cm1 * vx * vx - cm2 * vy * vy - cbf * front_brake;
             auto fx_r = cd * throttle - cm0 - cm1 * vx * vx - cm2 * vy * vy - cbr * rear_brake;
 
-            auto fy_f = ptr_front_tire_model->get_lateral_force(alphaf, Fz(0));
-            auto fy_r = ptr_rear_tire_model->get_lateral_force(alphar, Fz(1));
+            auto fy_f = ptr_front_tire_model->get_lateral_force(alphaf, double(Fz(0)));
+            auto fy_r = ptr_rear_tire_model->get_lateral_force(alphar, double(Fz(1)));
 
-            auto t_dot = (vx*casadi::cos(phi-phi_c)-vy*casadi::sin(phi-phi_c))/(tangent_vec_norm*(1-n*kappa));
-            auto n_dot = vx*casadi::sin(phi-phi_c)+vy*casadi::cos(phi-phi_c);
+            auto t_dot = (vx*T::cos(phi-phi_c)-vy*T::sin(phi-phi_c))/(tangent_vec_norm*(1-n*kappa));
+            auto n_dot = vx*T::sin(phi-phi_c)+vy*T::cos(phi-phi_c);
             auto phi_dot = omega;
 
-            auto vx_dot = 1/m * (fx_r + fx_f*casadi::cos(delta) - fy_f*casadi::sin(delta) + m*vy*omega);
-            auto vy_dot = 1/m * (fy_r + fx_f*casadi::sin(delta) + fy_f*casadi::cos(delta) - m*vx*omega);
-            auto omega_dot = 1/Iz * (fy_f*lf*casadi::cos(delta) + fx_f*lf*casadi::sin(delta) - fy_r*lr);
+            auto vx_dot = 1/m * (fx_r + fx_f*T::cos(delta) - fy_f*T::sin(delta) + m*vy*omega);
+            auto vy_dot = 1/m * (fy_r + fx_f*T::sin(delta) + fy_f*T::cos(delta) - m*vx*omega);
+            auto omega_dot = 1/Iz * (fy_f*lf*T::cos(delta) + fx_f*lf*T::sin(delta) - fy_r*lr);
 
-            auto dot_x = T::vertcat(
+            auto dot_x = T::vertcat({
                     t_dot,
                     n_dot,
                     phi_dot,
                     vx_dot,
                     vy_dot,
-                    omega_dot
-            );
+                    omega_dot,
+                    delta_dot
+            });
             return dot_x;
         }
 

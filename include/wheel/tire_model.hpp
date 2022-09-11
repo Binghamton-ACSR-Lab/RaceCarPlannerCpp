@@ -67,12 +67,12 @@ namespace acsr{
 
         template<class T>
         T get_longitudinal_force(T& lamb,double Fz) {
-            return Fz * D_long * casadi::sin(C_long * casadi::atan(B_long * lamb));
+            return Fz * D_long * T::sin(C_long * T::atan(B_long * lamb));
         }
 
         template<class T>
         T get_lateral_force(T& alpha,double Fz) {
-            return Fz * D_lat * casadi::sin(C_lat * casadi::atan(B_lat * alpha));
+            return Fz * D_lat * T::sin(C_lat * T::atan(B_lat * alpha));
         }
 
 

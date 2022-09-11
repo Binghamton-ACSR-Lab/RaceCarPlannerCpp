@@ -49,9 +49,13 @@ namespace acsr{
 
             casadi::Opti opti;
             auto X = opti.variable(dynamics.nx(),N+1);
-            auto X_dot = opti.variable(dynamics.nx(), N);
+            //auto X_dot = opti.variable(dynamics.nx(), N);
             auto U = opti.variable(dynamics.nu(), N);
             auto dt_sym_array = opti.variable(1,N);
+
+            auto X_dot = dynamics.updata(X,U);
+            std::cout<<"x_dot size: "<<X_dot.size()<<std::endl;
+
 
         }
 
