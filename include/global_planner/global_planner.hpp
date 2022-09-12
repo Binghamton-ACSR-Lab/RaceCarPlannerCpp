@@ -10,6 +10,9 @@
 #include <filesystem>
 #include "dynamics.hpp"
 #include "tire_model.hpp"
+#include <SQLiteCpp/SQLiteCpp.h>
+#include <boost/format.hpp>
+
 
 namespace acsr{
     using param_t = std::map<std::string,double>;
@@ -29,9 +32,13 @@ namespace acsr{
                 front_tire_params[it->first.as<std::string>()]=it->second.as<double>();
             }
 
-            auto rear_tire_yaml = YAML::Load(rear_tire_file);
-            for(auto it = rear_tire_yaml.begin();it!=rear_tire_yaml.end();++it){
-                rear_tire_params[it->first.as<std::string>()]=it->second.as<double>();
+            if(front_tire_file.compare(rear_tire_file)==0){
+                rear_tire_params = front_tire_params;
+            }else {
+                auto rear_tire_yaml = YAML::Load(rear_tire_file);
+                for (auto it = rear_tire_yaml.begin(); it != rear_tire_yaml.end(); ++it) {
+                    rear_tire_params[it->first.as<std::string>()] = it->second.as<double>();
+                }
             }
 
             std::filesystem::path p{track_file};
@@ -40,12 +47,19 @@ namespace acsr{
 
 
             track = std::make_shared<Track>(track_file,track_yaml["width"].as<double>(),track_yaml["closed"].as<bool>());
+            option["max_iter"] = 600000;
+            option["tol"]=1e-6;
+            option["linear_solver"]="ma27";
+            option["print_time"]=true;
         }
 
-        void make_plan(double start_s = 0,double end_s = -1,int N = 100){
+        void make_plan(double start_s = 0,double n0 =0, double v0=0.15, double end_s = -1,int N = 100,bool save_to_database = true){
             auto front_tire_model = std::make_shared<PacejkaSimpleModel>(front_tire_params);
             auto rear_tire_mode = std::make_shared<PacejkaSimpleModel>(rear_tire_params);
             BicycleDynamicsByParametricArc<PacejkaSimpleModel,PacejkaSimpleModel> dynamics(vehicle_params,track,front_tire_model,rear_tire_mode);
+
+            auto s_val = casadi::DM::linspace(start_s,end_s,N+1).T();
+            auto tau_array = track->s_to_t_lookup(s_val)[0];
 
             casadi::Opti opti;
             auto X = opti.variable(dynamics.nx(),N+1);
@@ -56,13 +70,166 @@ namespace acsr{
             auto X_dot = dynamics.updata(X,U);
             std::cout<<"x_dot size: "<<X_dot.size()<<std::endl;
 
+            auto n_sym_array = X(2,Slice());
+            //auto n_obj = (casadi::MX::atan(5 * ( n_sym_array*n_sym_array - track->get_width()*track->get_width() / 4) ) + casadi::pi / 2) * 120;
+            opti.minimize(casadi::MX::sum2(dt_sym_array));
 
+            //auto tau0 = track->s_to_t_lookup(DM{start_s});
+            auto phi_array = track->f_phi(tau_array)[0];
+            auto X0 = casadi::DM::vertcat({tau_array(0), n0, phi_array(0), v0, 0, 0, 0});
+            std::cout<<"X0: "<<X0<<std::endl;
+            //inital conditions
+            opti.subject_to(X(Slice(), 0) == X0);
+            opti.subject_to(X(0, Slice()) == tau_array);
+            //dynamics
+            opti.subject_to(X(0,Slice(1,N+1))==X(0,Slice(0,N))+dt_sym_array*X_dot(0,Slice()));
+            opti.subject_to(X(1,Slice(1,N+1))==X(1,Slice(0,N))+dt_sym_array*X_dot(1,Slice()));
+            opti.subject_to(X(2,Slice(1,N+1))==X(2,Slice(0,N))+dt_sym_array*X_dot(2,Slice()));
+            opti.subject_to(X(3,Slice(1,N+1))==X(3,Slice(0,N))+dt_sym_array*X_dot(3,Slice()));
+            opti.subject_to(X(4,Slice(1,N+1))==X(4,Slice(0,N))+dt_sym_array*X_dot(4,Slice()));
+            opti.subject_to(X(5,Slice(1,N+1))==X(5,Slice(0,N))+dt_sym_array*X_dot(5,Slice()));
+            opti.subject_to(X(6,Slice(1,N+1))==X(6,Slice(0,N))+dt_sym_array*X_dot(6,Slice()));
+
+            opti.subject_to(dt_sym_array >0);
+
+            //state boundary
+            opti.subject_to(opti.bounded(vehicle_params["delta_min"], X(6,Slice()), vehicle_params["delta_max"]));
+            opti.subject_to(opti.bounded(-track->get_width()/2,n_sym_array,track->get_width()/2));
+            //control boundary
+            opti.subject_to(opti.bounded(vehicle_params["delta_dot_min"], U(0, Slice()), vehicle_params["delta_dot_max"]));
+            opti.subject_to(opti.bounded(0, U(1, Slice()), 1));
+            opti.subject_to(opti.bounded(0, U(2, Slice()), 1));
+            opti.subject_to(opti.bounded(0, U(3, Slice()), 1));
+
+            auto X_guess = casadi::DM::zeros(dynamics.nx(),N+1);
+            X_guess(0,Slice()) = tau_array;
+            X_guess(2,Slice()) = phi_array;
+            X_guess(3,Slice()) = v0;
+            opti.set_initial(X, X_guess);
+
+            opti.solver("ipopt", Dict(), option);
+            try{
+                auto sol = opti.solve();
+                if(save_to_database){
+                    auto dt_array = sol.value(dt_sym_array);
+                    auto sol_x = sol.value(X);
+                    auto sol_u = sol.value(U);
+                    save(dt_array,sol_x,sol_u);
+                }
+            }
+            catch (CasadiException& e){
+                std::cout<<e.what()<<std::endl;
+                std::cout<<"Solve Optimal Problem Fails\n";
+                return;
+            }
+
+        }
+
+
+        void set_database_file(const std::string& file_name){
+            database_file =  file_name;
+        }
+
+        void set_datatable_name(const std::string& table_name){
+            datatable_name = table_name;
         }
 
 
     private:
         std::shared_ptr<Track> track;
         param_t vehicle_params,front_tire_params,rear_tire_params,track_params;
+        std::string database_file ="../output/global_planner.db";
+        std::string datatable_name = std::string();
+        Dict option;
+
+        void save(DM& dt_array,DM& x,DM& u){
+
+
+            SQLite::Database    db(database_file);
+            std::string table = datatable_name;
+
+            if(table.empty()){
+                const auto now = std::chrono::system_clock::now();
+                time_t rawtime;
+                struct tm * timeinfo;
+                char buffer[40];
+                time (&rawtime);
+                timeinfo = localtime(&rawtime);
+                strftime(buffer,sizeof(buffer),"_%d_%H_%M_%S",timeinfo);
+                table = std::string(buffer);
+            }
+
+            std::cout << "SQLite database file '" << db.getFilename().c_str() << "' opened successfully\n";
+            {
+                //delete table if exist
+                std::string drop_statement_string = "DROP TABLE IF EXISTS " + table;
+                db.exec(drop_statement_string);
+
+                //create table
+                std::string table_statement_string = "create table if not exists "
+                                                     +table
+                                                     + "("
+                                                       "id INTEGER PRIMARY KEY AUTOINCREMENT, "
+                                                       "dt REAL NOT NULL,"
+                                                       "tau REAL NOT NULL,"
+                                                       "s REAL NOT NULL,"
+                                                       "n REAL NOT NULL,"
+                                                       "x REAL NOT NULL,"
+                                                       "y REAL NOT NULL,"
+                                                       "phi REAL NOT NULL,"
+                                                       "vx REAL NOT NULL,"
+                                                       "vy REAL NOT NULL,"
+                                                       "omega REAL NOT NULL,"
+                                                       "delta REAL NOT NULL,"
+                                                       "delta_dot REAL,"
+                                                       "throttle REAL,"
+                                                       "front_brake REAL,"
+                                                       "rear_brake REAL"
+                                                       ")";
+                SQLite::Statement query(db, table_statement_string);
+                try {
+                    query.exec();
+                } catch (SQLite::Exception &e) {
+                    std::cout << "Create Table "<<table<<" Error\n";
+                    std::cout << e.what()<<std::endl;
+                    return;
+                }
+
+                std::string query_string = "INSERT INTO " +table
+                        +" (dt,tau,s,n,x,y,phi,vx,vy,omega,delta,delta_dot,throttle,front_brake,rear_brake) "
+                         "VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)";
+                query = SQLite::Statement(db, query_string);
+
+                auto N = x.columns();
+                auto dm_xy = track->f_sn_to_xy(std::vector<DM>{x(0),x(1)})[0];
+                auto s_array = track->t_to_s_lookup(x(0))[0];
+                for(auto i=0;i<N;++i){
+                    query.bind(1,double(dt_array(0,i)));
+                    query.bind(2,double(s_array(0,i)));
+                    query.bind(3,double(x(1,i)));
+                    query.bind(4,double(x(1,i)));
+                    query.bind(5,double(dm_xy(0,i)));
+                    query.bind(6,double(dm_xy(1,i)));
+                    query.bind(7,double(x(2,i)));
+                    query.bind(8,double(x(3,i)));
+                    query.bind(9,double(x(4,i)));
+                    query.bind(10,double(x(5,i)));
+                    query.bind(11,double(x(6,i)));
+                    query.bind(12,double(u(1,i)));
+                    query.bind(13,double(u(2,i)));
+                    query.bind(14,double(u(3,i)));
+                    query.bind(15,double(u(4,i)));
+                    try {
+                        query.exec();
+                    } catch (SQLite::Exception &e) {
+                        std::cout << "Insert Solution Error\n";
+                        std::cout << e.what();
+                        return;
+                    }
+                }
+            }
+        }
+
     };
 }
 

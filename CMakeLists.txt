@@ -8,6 +8,7 @@ enable_testing()
 
 find_package(Python3 COMPONENTS Interpreter Development NumPy REQUIRED)
 find_package(PythonLibs 3.0 REQUIRED)
+find_package(SQLiteCpp REQUIRED)
 include_directories(${PYTHON3_INCLUDE_DIRS} ${NumPy_INCLUDE_DIRS})
 
 #set(UNIT_TESTS test/csv_reader_test.cpp)
@@ -22,7 +23,15 @@ include_directories(include
 
 add_executable(RaceCarPlanner main.cpp test/track_test.cpp)
 target_include_directories(RaceCarPlanner PRIVATE ${Python3_INCLUDE_DIRS} ${Python3_NumPy_INCLUDE_DIRS})
-target_link_libraries(RaceCarPlanner casadi gtest gtest_main ${PYTHON_LIBRARIES} Python3::NumPy)
+target_link_libraries(RaceCarPlanner
+        casadi
+        gtest
+        gtest_main
+        ${PYTHON_LIBRARIES}
+        Python3::NumPy
+        SQLiteCpp
+        sqlite3
+)
 add_test( RaceCarPlanner RaceCarPlanner )
 
 

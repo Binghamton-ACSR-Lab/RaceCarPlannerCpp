@@ -19,7 +19,7 @@ namespace acsr {
     public:
         Track() = delete;
 
-        Track(const std::string &file_name, double track_width,bool is_closed,int resolution = 100) {
+        Track(const std::string &file_name, double track_width,bool is_closed,int resolution = 100):width(track_width) {
             auto reader = CSVReader(file_name);
             auto raw_data = reader.read();
             if(!raw_data.toDM(waypoints)){
@@ -46,6 +46,7 @@ namespace acsr {
             pt_t = get_parametric_function(waypoints);
 
             auto t = MX::sym("t");
+            auto n = MX::sym("n");
             auto s = MX::sym("s");
             auto pt_t_mx = pt_t(t)[0];
             auto jac = MX::jacobian(pt_t_mx,t);
@@ -55,6 +56,8 @@ namespace acsr {
 
             auto kappa = (jac(0)*hes(1)-jac(1)*hes(0))/MX::pow(MX::norm_2(jac),3);
             f_kappa = casadi::Function("kappa",{t},{kappa});
+
+
 
             //auto vec_mx = f_tangent_vec(t)[0];
             //f_tangent_vec = casadi::Function("phi",{t},{vec});
@@ -84,6 +87,9 @@ namespace acsr {
             s_to_t_lookup = interpolant("s_to_t","linear",std::vector<std::vector<double>>{s_value_vec},ts_vec);
             t_to_s_lookup = interpolant("t_to_s","linear",std::vector<std::vector<double>>{ts_vec},s_value_vec);
 
+
+            auto xy =pt_t_mx + MX::mtimes(rot_mat,jac/MX::norm_2(jac))*n;
+            f_sn_to_xy = casadi::Function("sn_to_sy",{t,n},{xy});
             //center_line.resize(resolution*t_max,2);
             //inner_line.resize(resolution*t_max,2);
             //outer_line.resize(resolution*t_max,2);
@@ -97,6 +103,8 @@ namespace acsr {
             //std::cout<<center_line(Slice(),1)<<std::endl;
             //std::cout<<waypoints(0,Slice())<<std::endl;
             //std::cout<<waypoints(1,Slice())<<std::endl;
+
+
 
 
             auto vec = f_tangent_vec(ts.T())[0];
@@ -166,8 +174,12 @@ namespace acsr {
             plt::show();
         }
 
-        double getMaxLength(){
+        double get_max_length(){
             return s_max;
+        }
+
+        double get_width(){
+            return width;
         }
 
     public:
@@ -177,9 +189,10 @@ namespace acsr {
         casadi::Function f_tangent_vec;
         casadi::Function s_to_t_lookup;
         casadi::Function t_to_s_lookup;
-
+        casadi::Function f_sn_to_xy;
     private:
         casadi::DM waypoints;
+        double width;
 
         double t_max;
         double s_max;
