@@ -90,12 +90,12 @@ namespace acsr{
             m = param.at("m");
             Iz = param.at("Iz");
 
-            cd = param.at("cd");
-            cm0 = param.at("cm0");
-            cm1 = param.at("cm1");
-            cm2 = param.at("cm2");
-            cbf = param.at("cbf");
-            cbr = param.at("cbr");
+            cd = param.at("Cd");
+            cm0 = param.at("Cm0");
+            cm1 = param.at("Cm1");
+            cm2 = param.at("Cm2");
+            cbf = param.at("Cbf");
+            cbr = param.at("Cbr");
 
         }
 
@@ -103,13 +103,15 @@ namespace acsr{
         T updata(T& x,T& u){
             //x = [t,n,phi,vx,vy,omega]
             //u = [delta,d]
-            auto t = x(0,Slice());
-            auto n = x(1,Slice());
-            auto phi = x(2,Slice());
-            auto vx = x(3,Slice());
-            auto vy = x(4,Slice());
-            auto omega = x(5,Slice());
-            auto delta = x(6,Slice());
+
+            auto N = x.columns()-1;
+            auto t = x(0,Slice(0,N));
+            auto n = x(1,Slice(0,N));
+            auto phi = x(2,Slice(0,N));
+            auto vx = x(3,Slice(0,N));
+            auto vy = x(4,Slice(0,N));
+            auto omega = x(5,Slice(0,N));
+            auto delta = x(6,Slice(0,N));
 
             auto delta_dot = u(0,Slice());
             auto throttle = u(1,Slice());

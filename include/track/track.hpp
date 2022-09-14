@@ -38,11 +38,6 @@ namespace acsr {
             auto ts = casadi::DM::linspace(0, t_max, resolution * t_max);
             auto ts_vec = std::vector<double>(ts->begin(),ts->end());
 
-
-
-            //dm_a.to_file("a.txt");
-            //dm_b.to_file("b.txt");
-
             pt_t = get_parametric_function(waypoints);
 
             auto t = MX::sym("t");
@@ -53,19 +48,13 @@ namespace acsr {
             auto hes=MX::jacobian(jac,t);
 
             f_tangent_vec = casadi::Function("vec",{t},{jac});
-
             auto kappa = (jac(0)*hes(1)-jac(1)*hes(0))/MX::pow(MX::norm_2(jac),3);
             f_kappa = casadi::Function("kappa",{t},{kappa});
-
-
-
-            //auto vec_mx = f_tangent_vec(t)[0];
-            //f_tangent_vec = casadi::Function("phi",{t},{vec});
             f_phi = casadi::Function("phi",{t},{casadi::MX::atan2(jac(1),jac(0))});
 
-            auto test_phi = f_phi(ts.T())[0];
-            std::cout<<test_phi.size()<<std::endl;
-            std::cout<<test_phi<<std::endl;
+            //auto test_phi = f_phi(ts.T())[0];
+            //std::cout<<test_phi.size()<<std::endl;
+            //std::cout<<test_phi<<std::endl;
 
             auto theta = M_PI/2;
             auto rot_mat_vector = std::vector<std::vector<double>>{{cos(theta),-sin(theta)},{sin(theta),cos(theta)}};
@@ -88,48 +77,35 @@ namespace acsr {
             t_to_s_lookup = interpolant("t_to_s","linear",std::vector<std::vector<double>>{ts_vec},s_value_vec);
 
 
-            auto xy =pt_t_mx + MX::mtimes(rot_mat,jac/MX::norm_2(jac))*n;
-            f_sn_to_xy = casadi::Function("sn_to_sy",{t,n},{xy});
-            //center_line.resize(resolution*t_max,2);
-            //inner_line.resize(resolution*t_max,2);
-            //outer_line.resize(resolution*t_max,2);
 
-            center_line = pt_t(ts.T())[0];
-            //std::cout<<ts.size()<<std::endl;
-            //std::cout<<center_line.size()<<std::endl;
-            center_line = casadi::DM::reshape(center_line,2,7800);
+            //center_line = pt_t(ts.T())[0];
+            //center_line = casadi::DM::reshape(center_line,2,center_line.columns()/2);
 
-            //std::cout<<center_line(Slice(),0)<<std::endl;
-            //std::cout<<center_line(Slice(),1)<<std::endl;
-            //std::cout<<waypoints(0,Slice())<<std::endl;
-            //std::cout<<waypoints(1,Slice())<<std::endl;
+            //auto vec = f_tangent_vec(ts.T())[0];
+            //auto norm = casadi::DM::sqrt(vec(0,Slice())*vec(0,Slice())+vec(1,Slice())*vec(1,Slice()));
+            //vec = vec/casadi::DM::repmat(norm,2);
+            //vec = DM::mtimes(rot_mat,vec);
+            //inner_line = (center_line+track_width/2*vec).T();
+            //outer_line = (center_line-track_width/2*vec).T();
+            //center_line = center_line.T();
 
+            DM ns_zeros = DM::zeros(ts.rows(),ts.columns());
+            DM ns_ones = DM::ones(ts.rows(),ts.columns());
 
+            auto xy =pt_t_mx.T() + MX::mtimes(rot_mat,jac/MX::norm_2(jac))*n;
 
+            f_sn_to_xy = casadi::Function("sn_to_xy",{t,n},{xy});
 
-            auto vec = f_tangent_vec(ts.T())[0];
-            //std::cout<<vec.size()<<std::endl;
-            //vec = casadi::DM::reshape(vec,2,7800);
-            auto norm = casadi::DM::sqrt(vec(0,Slice())*vec(0,Slice())+vec(1,Slice())*vec(1,Slice()));
-            //std::cout<<norm.size()<<std::endl;
-            vec = vec/casadi::DM::repmat(norm,2);
-            //std::cout<<vec.size()<<std::endl;
-            vec = DM::mtimes(rot_mat,vec);
-            inner_line = (center_line+track_width/2*vec).T();
-            outer_line = (center_line-track_width/2*vec).T();
-            center_line = center_line.T();
-            /*
-            for(auto idx=0;idx<resolution*t_max;++idx){
-                auto v = pt_t(ts(idx))[0];
-                v = DM::reshape(v,1,2);
+            center_line = f_sn_to_xy(DMVector {ts.T(),ns_zeros.T()})[0];
+            //std::cout<<center_line_test.size()<<std::endl;
 
-                center_line(idx,Slice()) = v;
-                auto vec = f_tangent_vec(ts)[0];
-                vec = vec/casadi::DM::norm_2(vec);
-                vec = DM::mtimes(rot_mat,vec);
-                inner_line(idx,Slice()) = v+track_width/2*vec.T();
-                outer_line(idx,Slice()) = v-track_width/2*vec.T();
-            }*/
+            inner_line = f_sn_to_xy(std::vector<DM>{ts.T(),+track_width/2*ns_ones.T()})[0];
+            outer_line = f_sn_to_xy(std::vector<DM>{ts.T(),-track_width/2*ns_ones.T()})[0];
+
+            //std::cout<<casadi::DM::sum2(casadi::DM::sum1(center_line.T()-center_line_test))<<std::endl;
+            //std::cout<<casadi::DM::sum2(casadi::DM::sum1(outer_line.T()-outer_line_test))<<std::endl;
+            //std::cout<<casadi::DM::sum2(casadi::DM::sum1(inner_line.T()-inner_line_test))<<std::endl;
+
             search_tree = RTree(center_line);
 
         }
@@ -138,12 +114,12 @@ namespace acsr {
 
         void plot(){
             namespace plt = matplotlibcpp;
-            auto center_x_dm = center_line(Slice(),0);
-            auto center_y_dm = center_line(Slice(),1);
-            auto inner_x_dm = inner_line(Slice(),0);
-            auto inner_y_dm = inner_line(Slice(),1);
-            auto outer_x_dm = outer_line(Slice(),0);
-            auto outer_y_dm = outer_line(Slice(),1);
+            auto center_x_dm = center_line(0,Slice());
+            auto center_y_dm = center_line(1,Slice());
+            auto inner_x_dm = inner_line(0,Slice());
+            auto inner_y_dm = inner_line(1,Slice());
+            auto outer_x_dm = outer_line(0,Slice());
+            auto outer_y_dm = outer_line(1,Slice());
 
             plt::plot(std::vector<double>{center_x_dm->begin(),center_x_dm->end()},
                       std::vector<double>{center_y_dm->begin(),center_y_dm->end()},
@@ -156,15 +132,15 @@ namespace acsr {
                       "b-");
 
             std::vector<double> inner_dot_x,inner_dot_y,outer_dot_x,outer_dot_y,center_dot_x,center_dot_y;
-            for(auto i=0;i<center_line.rows();i+=100){
-                inner_dot_x.push_back(double(inner_line(i,0)));
-                inner_dot_y.push_back(double(inner_line(i,1)));
+            for(auto i=0;i<center_line.columns();i+=100){
+                inner_dot_x.push_back(double(inner_line(0,i)));
+                inner_dot_y.push_back(double(inner_line(1,i)));
 
-                outer_dot_x.push_back(double(outer_line(i,0)));
-                outer_dot_y.push_back(double(outer_line(i,1)));
+                outer_dot_x.push_back(double(outer_line(0,i)));
+                outer_dot_y.push_back(double(outer_line(1,i)));
 
-                center_dot_x.push_back(double(center_line(i,0)));
-                center_dot_y.push_back(double(center_line(i,1)));
+                center_dot_x.push_back(double(center_line(0,i)));
+                center_dot_y.push_back(double(center_line(1,i)));
             }
             plt::scatter(inner_dot_x,inner_dot_y);
             plt::scatter(outer_dot_x,outer_dot_y);

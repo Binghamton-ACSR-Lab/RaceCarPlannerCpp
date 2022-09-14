@@ -5,9 +5,10 @@
 #include "csv_reader.hpp"
 #include <casadi/casadi.hpp>
 #include "rtree.hpp"
+#include "track.hpp"
 
 TEST(CSVReaderTest,Reader){
-    acsr::CSVReader reader("tracks/temp.csv");
+    acsr::CSVReader reader("../data/tracks/temp.csv");
     auto data = reader.read();
     casadi::DM dm;
 
@@ -17,7 +18,7 @@ TEST(CSVReaderTest,Reader){
     EXPECT_NEAR(2626.03,double(dm(0,0)),1e-3);
 }
 
-TEST(RTreaTest,RTree){
+TEST(RTreeTest,RTree){
     std::vector<std::vector<double>> pts{{0.0,0.0},{1.0,0.0},{0.0,1.0},{1.0,1.0},{0.5,1.5}};
     acsr::RTree rTree(pts);
 
@@ -27,3 +28,4 @@ TEST(RTreaTest,RTree){
     EXPECT_NEAR(pt[0],1.0,1e-3);
     EXPECT_NEAR(pt[1],0.0,1e-3);
 }
+
