@@ -94,13 +94,13 @@ namespace acsr {
 
             auto xy =pt_t_mx.T() + MX::mtimes(rot_mat,jac/MX::norm_2(jac))*n;
 
-            f_sn_to_xy = casadi::Function("sn_to_xy",{t,n},{xy});
+            f_tn_to_xy = casadi::Function("tn_to_xy",{t,n},{xy});
 
-            center_line = f_sn_to_xy(DMVector {ts.T(),ns_zeros.T()})[0];
+            center_line = f_tn_to_xy(DMVector {ts.T(),ns_zeros.T()})[0];
             //std::cout<<center_line_test.size()<<std::endl;
 
-            inner_line = f_sn_to_xy(std::vector<DM>{ts.T(),+track_width/2*ns_ones.T()})[0];
-            outer_line = f_sn_to_xy(std::vector<DM>{ts.T(),-track_width/2*ns_ones.T()})[0];
+            inner_line = f_tn_to_xy(std::vector<DM>{ts.T(),+track_width/2*ns_ones.T()})[0];
+            outer_line = f_tn_to_xy(std::vector<DM>{ts.T(),-track_width/2*ns_ones.T()})[0];
 
             //std::cout<<casadi::DM::sum2(casadi::DM::sum1(center_line.T()-center_line_test))<<std::endl;
             //std::cout<<casadi::DM::sum2(casadi::DM::sum1(outer_line.T()-outer_line_test))<<std::endl;
@@ -121,6 +121,7 @@ namespace acsr {
             auto outer_x_dm = outer_line(0,Slice());
             auto outer_y_dm = outer_line(1,Slice());
 
+
             plt::plot(std::vector<double>{center_x_dm->begin(),center_x_dm->end()},
                       std::vector<double>{center_y_dm->begin(),center_y_dm->end()},
                       "r-",
@@ -130,6 +131,7 @@ namespace acsr {
                       std::vector<double>{outer_x_dm->begin(),outer_x_dm->end()},
                       std::vector<double>{outer_y_dm->begin(),outer_y_dm->end()},
                       "b-");
+
 
             std::vector<double> inner_dot_x,inner_dot_y,outer_dot_x,outer_dot_y,center_dot_x,center_dot_y;
             for(auto i=0;i<center_line.columns();i+=100){
@@ -154,7 +156,11 @@ namespace acsr {
             return s_max;
         }
 
-        double get_width(){
+        double get_max_tau(){
+            return t_max;
+        }
+
+        constexpr double get_width(){
             return width;
         }
 
@@ -165,10 +171,10 @@ namespace acsr {
         casadi::Function f_tangent_vec;
         casadi::Function s_to_t_lookup;
         casadi::Function t_to_s_lookup;
-        casadi::Function f_sn_to_xy;
+        casadi::Function f_tn_to_xy;
     private:
         casadi::DM waypoints;
-        double width;
+        const double width;
 
         double t_max;
         double s_max;

@@ -4,7 +4,7 @@ project(RaceCarPlanner)
 set(CMAKE_CXX_STANDARD 17)
 #SET(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -pthread")
 #add_subdirectory(test)
-enable_testing()
+#enable_testing()
 
 find_package(Python3 COMPONENTS Interpreter Development NumPy REQUIRED)
 find_package(PythonLibs 3.0 REQUIRED)
@@ -24,10 +24,10 @@ include_directories(include
         include/global_planner
         include/vehicle)
 
-add_executable(RaceCarPlanner main.cpp test/track_test.cpp)
+add_executable(RaceCarPlanner main.cpp)
 target_include_directories(RaceCarPlanner PRIVATE ${Python3_INCLUDE_DIRS} ${Python3_NumPy_INCLUDE_DIRS})
 target_link_libraries(RaceCarPlanner SQLiteCpp sqlite3 casadi gtest gtest_main ${PYTHON_LIBRARIES} Python3::NumPy yaml-cpp pthread dl)
-add_test( RaceCarPlanner RaceCarPlanner )
+#add_test( RaceCarPlanner RaceCarPlanner )
 
 
 
