@@ -171,9 +171,9 @@ namespace acsr{
 
 
 
-            auto n_obj = (MX::atan(5 * (n_sym_array * n_sym_array - (track_width / 2) *(track_width / 2))) + casadi::pi / 2) * 2.0;
+            auto n_obj = MX::atan(5 * (n_sym_array * n_sym_array - (track_width / 2) *(track_width / 2))) + casadi::pi / 2;
             //opti.minimize(MX::sum2(dt_sym_array) + MX::dot(n_obj, n_obj));
-            opti.minimize(MX::sum2(dt_sym_array) + 0.1*MX::dot(delta_dot_sym_array,delta_dot_sym_array) + MX::dot(n_obj,n_obj));
+            opti.minimize(MX::sum2(dt_sym_array) + MX::dot(delta_dot_sym_array,delta_dot_sym_array) + 15.0*MX::dot(n_obj,n_obj));
 
             //dynamics
             //opti.subject_to(X(all, Slice(1,N+1)) == X(all, _N_1) + X_dot);
@@ -196,7 +196,7 @@ namespace acsr{
             //opti.subject_to(opti.bounded(delta_min, delta_sym_array, delta_max));
             //opti.subject_to(opti.bounded(-track_width/2,n_sym_array,track_width/2));
             //control boundary
-            //opti.subject_to(opti.bounded(delta_dot_min, delta_dot_sym_array, delta_dot_max));
+            opti.subject_to(opti.bounded(delta_dot_min, delta_dot_sym_array, delta_dot_max));
             opti.subject_to(opti.bounded(0, throttle_sym_array, 1));
             opti.subject_to(opti.bounded(0, front_brake_sym_array, 1));
             opti.subject_to(opti.bounded(0, rear_brake_sym_array, 1));
@@ -204,10 +204,10 @@ namespace acsr{
             auto X_guess = casadi::DM::zeros(nx,N+1);
             //X_guess(0,Slice()) = tau_array;
             //X_guess(2,Slice(1,N+1)) = phi_array;
-            X_guess(3,all) = v0;
-            //for(auto i=0;i<N+1;++i){
-            //    X_guess(Slice(), i) = X0;
-            //}
+            //X_guess(3,all) = v0;
+            for(auto i=0;i<N+1;++i){
+                X_guess(Slice(), i) = X0;
+            }
             opti.set_initial(X, X_guess);
 
             opti.solver("ipopt", casadi_option, option);
@@ -589,17 +589,10 @@ namespace acsr{
 
 
 
-
-
-
         void save(DM& dt_array,DM& x,DM& u){
-
-
             SQLite::Database    db(database_file, SQLite::OPEN_READWRITE|SQLite::OPEN_CREATE);
             std::cout << "SQLite database file '" << db.getFilename().c_str() << "' opened successfully\n";
-
             current_datatable_name = datatable_name;
-
             if(current_datatable_name.empty()){
                 const auto now = std::chrono::system_clock::now();
                 time_t rawtime;

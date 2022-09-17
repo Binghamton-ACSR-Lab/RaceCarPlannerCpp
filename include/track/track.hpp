@@ -52,10 +52,6 @@ namespace acsr {
             f_kappa = casadi::Function("kappa",{t},{kappa});
             f_phi = casadi::Function("phi",{t},{casadi::MX::atan2(jac(1),jac(0))});
 
-            //auto test_phi = f_phi(ts.T())[0];
-            //std::cout<<test_phi.size()<<std::endl;
-            //std::cout<<test_phi<<std::endl;
-
             auto theta = M_PI/2;
             auto rot_mat_vector = std::vector<std::vector<double>>{{cos(theta),-sin(theta)},{sin(theta),cos(theta)}};
             auto rot_mat = DM(rot_mat_vector);
@@ -75,19 +71,6 @@ namespace acsr {
 
             s_to_t_lookup = interpolant("s_to_t","linear",std::vector<std::vector<double>>{s_value_vec},ts_vec);
             t_to_s_lookup = interpolant("t_to_s","linear",std::vector<std::vector<double>>{ts_vec},s_value_vec);
-
-
-
-            //center_line = pt_t(ts.T())[0];
-            //center_line = casadi::DM::reshape(center_line,2,center_line.columns()/2);
-
-            //auto vec = f_tangent_vec(ts.T())[0];
-            //auto norm = casadi::DM::sqrt(vec(0,Slice())*vec(0,Slice())+vec(1,Slice())*vec(1,Slice()));
-            //vec = vec/casadi::DM::repmat(norm,2);
-            //vec = DM::mtimes(rot_mat,vec);
-            //inner_line = (center_line+track_width/2*vec).T();
-            //outer_line = (center_line-track_width/2*vec).T();
-            //center_line = center_line.T();
 
             DM ns_zeros = DM::zeros(ts.rows(),ts.columns());
             DM ns_ones = DM::ones(ts.rows(),ts.columns());
