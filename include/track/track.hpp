@@ -28,13 +28,17 @@ namespace acsr {
             }
             auto rows = waypoints.rows();
             auto cols = waypoints.columns();
+            t_max = rows;
+            pt_t = get_parametric_function(waypoints,is_closed);
+
+            /*
             if(is_closed){
                 waypoints.resize(rows+1,cols);
                 waypoints(rows,Slice()) = waypoints(0,Slice());
                 t_max = rows;
             }else{
                 t_max = rows-1;
-            }
+            }*/
             auto ts = casadi::DM::linspace(0, t_max, resolution * t_max);
             auto ts_vec = std::vector<double>(ts->begin(),ts->end());
 
@@ -173,8 +177,8 @@ namespace acsr {
         RTree search_tree;
 
 
-        casadi::Function get_parametric_function(const casadi::DM& waypoints){
-            auto [dm_a,dm_b] = CubicBezier::get_coef(waypoints);
+        casadi::Function get_parametric_function(const casadi::DM& waypoints,bool closed){
+            auto [dm_a,dm_b] = CubicBezier::get_coef(waypoints,closed);
             auto dm_A = casadi::MX(dm_a);
             auto dm_B = casadi::MX(dm_b);
             auto dm_waypoints = casadi::MX(waypoints);
