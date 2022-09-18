@@ -28,17 +28,13 @@ namespace acsr {
             }
             auto rows = waypoints.rows();
             auto cols = waypoints.columns();
-            if(is_closed){
-                waypoints.resize(rows+1,cols);
-                waypoints(rows,Slice()) = waypoints(0,Slice());
-                t_max = rows;
-            }else{
-                t_max = rows-1;
-            }
+            t_max = is_closed?rows:rows-1;
+            pt_t = get_parametric_function(waypoints,is_closed);
+
             auto ts = casadi::DM::linspace(0, t_max, resolution * t_max);
             auto ts_vec = std::vector<double>(ts->begin(),ts->end());
 
-            pt_t = get_parametric_function(waypoints);
+            pt_t = get_parametric_function(waypoints,is_closed);
 
             auto t = MX::sym("t");
             auto n = MX::sym("n");
@@ -51,6 +47,10 @@ namespace acsr {
             auto kappa = (jac(0)*hes(1)-jac(1)*hes(0))/MX::pow(MX::norm_2(jac),3);
             f_kappa = casadi::Function("kappa",{t},{kappa});
             f_phi = casadi::Function("phi",{t},{casadi::MX::atan2(jac(1),jac(0))});
+
+            //auto test_phi = f_phi(ts.T())[0];
+            //std::cout<<test_phi.size()<<std::endl;
+            //std::cout<<test_phi<<std::endl;
 
             auto theta = M_PI/2;
             auto rot_mat_vector = std::vector<std::vector<double>>{{cos(theta),-sin(theta)},{sin(theta),cos(theta)}};
@@ -71,6 +71,7 @@ namespace acsr {
 
             s_to_t_lookup = interpolant("s_to_t","linear",std::vector<std::vector<double>>{s_value_vec},ts_vec);
             t_to_s_lookup = interpolant("t_to_s","linear",std::vector<std::vector<double>>{ts_vec},s_value_vec);
+
 
             DM ns_zeros = DM::zeros(ts.rows(),ts.columns());
             DM ns_ones = DM::ones(ts.rows(),ts.columns());
@@ -168,32 +169,40 @@ namespace acsr {
         RTree search_tree;
 
 
-        casadi::Function get_parametric_function(const casadi::DM& waypoints){
-            auto [dm_a,dm_b] = CubicBezier::get_coef(waypoints);
+        casadi::Function get_parametric_function(const casadi::DM& waypoints,bool closed){
+            auto [dm_a,dm_b] = CubicBezier::get_coef(waypoints,closed);
             auto dm_A = casadi::MX(dm_a);
             auto dm_B = casadi::MX(dm_b);
             auto dm_waypoints = casadi::MX(waypoints);
             auto t = casadi::MX::sym("t");
             auto n = dm_a.rows();
             assert(dm_b.rows()==n);
-            auto tau = casadi::MX::mod(t,n);
 
-            auto i = casadi::MX::floor(tau);
-            auto a = dm_waypoints(i,Slice());
-
-            auto b = dm_A(i,Slice());
-
-            auto c = dm_B(i,Slice());
-            auto i1 = casadi::MX::mod(i+1,n);
-            auto d =dm_waypoints(i1,Slice());
-            auto g = casadi::MX::pow(1 - (tau-i), 3) * a + 3 * casadi::MX::pow(1 - (tau-i), 2) * (tau-i) * b
-                    + 3 * (1 - (tau-i)) * casadi::MX::pow(tau-i, 2) * c + casadi::MX::pow(tau-i, 3) * d;
-            //auto vec = casadi::MX::jacobian(g,tau);
-
-            casadi::Function f_pt_t("f",casadi::MXVector{t},casadi::MXVector{g},{"t"},{"pt"});
-            //casadi::Function f_tangent_vec("vec",casadi::MXVector{t},casadi::MXVector{vec},{"t"},{"vec"});
-            //return std::tuple(f_pt_t,f_tangent_vec);
-            return f_pt_t;
+            if(closed) {
+                auto tau = casadi::MX::mod(t, n);
+                auto i = casadi::MX::floor(tau);
+                auto a = dm_waypoints(i, Slice());
+                auto b = dm_A(i, Slice());
+                auto c = dm_B(i, Slice());
+                auto i1 = casadi::MX::mod(i + 1, n);
+                auto d = dm_waypoints(i1, Slice());
+                auto g = casadi::MX::pow(1 - (tau - i), 3) * a + 3 * casadi::MX::pow(1 - (tau - i), 2) * (tau - i) * b
+                         + 3 * (1 - (tau - i)) * casadi::MX::pow(tau - i, 2) * c + casadi::MX::pow(tau - i, 3) * d;
+                casadi::Function f_pt_t("f", casadi::MXVector{t}, casadi::MXVector{g}, {"t"}, {"pt"});
+                return f_pt_t;
+            }else{
+                auto tau = casadi::MX::mod(t, n);
+                auto i = casadi::MX::floor(tau);
+                auto a = dm_waypoints(i, Slice());
+                auto b = dm_A(i, Slice());
+                auto c = dm_B(i, Slice());
+                auto i1 = i + 1;
+                auto d = dm_waypoints(i1, Slice());
+                auto g = casadi::MX::pow(1 - (tau - i), 3) * a + 3 * casadi::MX::pow(1 - (tau - i), 2) * (tau - i) * b
+                         + 3 * (1 - (tau - i)) * casadi::MX::pow(tau - i, 2) * c + casadi::MX::pow(tau - i, 3) * d;
+                casadi::Function f_pt_t("f", casadi::MXVector{t}, casadi::MXVector{g}, {"t"}, {"pt"});
+                return f_pt_t;
+            }
         }
     };
 }
