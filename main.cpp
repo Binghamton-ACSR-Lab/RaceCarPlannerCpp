@@ -4,7 +4,7 @@
 #include "include/utility/utility.hpp"
 #include <gtest/gtest.h>
 #include "track.hpp"
-#include "global_planner.hpp"
+#include "global_planner_track.hpp"
 #include <yaml-cpp/yaml.h>
 #include "matplotlibcpp.h"
 
@@ -19,7 +19,7 @@ void planner_test(){
     std::string track_config_file = "../data/params/racecar_nwh.yaml";
     std::string front_tire_file = "../data/params/nwh_tire.yaml";
     std::string rear_tire_file = "../data/params/nwh_tire.yaml";
-    BicycleDynamicsGlobalPlanner planner(track_data_file,track_config_file,front_tire_file,rear_tire_file);
+    BicycleDynamicsTwoBrakeGlobalPlanner planner(track_data_file,track_config_file,front_tire_file,rear_tire_file);
     planner.plan_refine(110.01,610.01,0,0.15,200);
     planner.plot_trajectory();
 }
@@ -65,7 +65,9 @@ void track_test(){
 
 int main(int argc, char **argv) {
 
-    track_test();
+    std::vector<std::vector<double>> a{{1,2},{3,4},{4,5}};
+    std::cout<<DM(a);
+    //track_test();
 
 
 
