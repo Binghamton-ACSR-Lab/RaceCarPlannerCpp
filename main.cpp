@@ -32,8 +32,9 @@ void track_test(){
     Track full_track(full_track_data_file,7.0,true);
     Track half_track(half_track_data_file,7.0, false);
 
-    auto full_tau = (DM::linspace(0,full_track.get_max_tau(),100*full_track.get_max_tau()+1)).T();
-    auto half_tau = (DM::linspace(0,half_track.get_max_tau(),100*half_track.get_max_tau()+1)).T();
+    std::cout<<half_track.get_max_tau()<<std::endl;
+    auto full_tau = (DM::linspace(0,full_track.get_max_tau()-1e-6,100*full_track.get_max_tau()+1)).T();
+    auto half_tau = (DM::linspace(0,half_track.get_max_tau()-1e-6,100*half_track.get_max_tau()+1)).T();
     auto full_zeros = DM::zeros(1,full_tau.columns());
     auto half_zeros = DM::zeros(1,half_tau.columns());
 
@@ -45,6 +46,12 @@ void track_test(){
 
     auto half_x = half_centerline(0,Slice());
     auto half_y = half_centerline(1,Slice());
+
+    std::cout<<half_centerline(Slice(),Slice(0,100))<<std::endl;
+    std::cout<<"------------\n";
+    std::cout<<half_centerline(Slice(),Slice(half_centerline.columns()-110,half_centerline.columns()))<<std::endl;
+
+
 
     plt::plot(std::vector<double>(full_x->begin(),full_x->end()),
               std::vector<double>(full_y->begin(),full_y->end()),

@@ -39,11 +39,12 @@ namespace acsr {
                 n = waypoints.rows()-1;
                 M = casadi::DM::zeros(n,n);
                 s =DM::zeros(n,2);
-                for(auto idx =1;idx<n-2;++idx){
+                for(auto idx =0;idx<n-2;++idx){
                     M(idx+1,casadi::Slice(idx,idx+3)) = tridiagle;
                 }
                 M(0,Slice(0,2)) = DM{2,1};
                 M(n-1,Slice(n-2,n))= DM{2,7};
+                //std::cout<<M<<std::endl;
                 for(auto idx =1;idx<n-1;++idx){
                     s(idx,all) = 2*(2*waypoints(idx,all) + waypoints(idx+1,all));
                 }
@@ -62,7 +63,6 @@ namespace acsr {
             else
                 b(n-1,all) = (waypoints(n,all) + a(n-1,all))/2;
             return std::tie(a,b);
-
         }
 
 
