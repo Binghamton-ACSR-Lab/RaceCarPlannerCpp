@@ -11,6 +11,7 @@ find_package(PythonLibs 3.0 REQUIRED)
 find_package(SQLiteCpp REQUIRED)
 find_package(yaml-cpp)
 find_package(Threads)
+find_package(TBB REQUIRED)
 
 include_directories(${PYTHON3_INCLUDE_DIRS} ${NumPy_INCLUDE_DIRS})
 
@@ -25,8 +26,8 @@ include_directories(include
         include/vehicle)
 
 add_executable(RaceCarPlanner main.cpp)
-target_include_directories(RaceCarPlanner PRIVATE ${Python3_INCLUDE_DIRS} ${Python3_NumPy_INCLUDE_DIRS})
-target_link_libraries(RaceCarPlanner SQLiteCpp sqlite3 casadi gtest gtest_main ${PYTHON_LIBRARIES} Python3::NumPy yaml-cpp pthread dl)
+target_include_directories(RaceCarPlanner PRIVATE ${Python3_INCLUDE_DIRS} ${Python3_NumPy_INCLUDE_DIRS} )
+target_link_libraries(RaceCarPlanner SQLiteCpp sqlite3 casadi gtest gtest_main ${PYTHON_LIBRARIES} Python3::NumPy yaml-cpp pthread dl tbb)
 #add_test( RaceCarPlanner RaceCarPlanner )
 
 

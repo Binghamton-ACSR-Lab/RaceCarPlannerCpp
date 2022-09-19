@@ -7,12 +7,15 @@
 #include "global_planner_track.hpp"
 #include <yaml-cpp/yaml.h>
 #include "matplotlibcpp.h"
-
+#include <tbb/tbb.h>
+#include <execution>
+#include "path.hpp"
 using namespace acsr;
 template<class T>
 T update(T& x,T& u){
     return T::vertcat({x,u});
 }
+
 
 void planner_test(){
     std::string track_data_file = "../data/tracks/temp_nwh.csv";
@@ -20,7 +23,7 @@ void planner_test(){
     std::string front_tire_file = "../data/params/nwh_tire.yaml";
     std::string rear_tire_file = "../data/params/nwh_tire.yaml";
     BicycleDynamicsTwoBrakeGlobalPlanner planner(track_data_file,track_config_file,front_tire_file,rear_tire_file);
-    planner.plan_refine(110.01,610.01,0,0.15,200);
+    planner.plan_refine(110.01,410.01,0,0.15,100);
     planner.plot_trajectory();
 }
 
@@ -65,8 +68,19 @@ void track_test(){
 
 int main(int argc, char **argv) {
 
-    std::vector<std::vector<double>> a{{1,2},{3,4},{4,5}};
-    std::cout<<DM(a);
+    //planner_test();
+
+    std::string half_track_data_file = "../data/tracks/temp_nwh_half.csv";
+    auto reader = CSVReader(half_track_data_file);
+    auto raw_data = reader.read();
+    DM waypoints;
+    if(!raw_data.toDM(waypoints)){
+        std::cout<<"Read Track File Fails\n";
+    }
+    std::cout<<waypoints<<std::endl;
+    acsr::Path path(waypoints,7,50);
+    path.plot();
+
     //track_test();
 
 
