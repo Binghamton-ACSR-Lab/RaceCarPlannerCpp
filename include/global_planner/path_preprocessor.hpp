@@ -15,13 +15,13 @@ namespace acsr {
     using namespace casadi;
     using param_t = std::map<std::string, double>;
 
-    template<class map_t>
+    template<class valid_checker_t>
     class PathPreprocessor {
 
     public:
-        PathPreprocessor(map_t *map, DM &pts, const param_t &vehicle_params,
+        PathPreprocessor(std::shared_ptr<valid_checker_t> valid_checker_ptr, DM &pts, const param_t &vehicle_params,
                          double min_edge_margin = 0.1,double max_edge_margin = 2.0):
-                         map_(map),min_edge_margin_(min_edge_margin),max_edge_margin_(max_edge_margin){
+                         valid_checker_ptr_(valid_checker_ptr),min_edge_margin_(min_edge_margin),max_edge_margin_(max_edge_margin){
             //format waypoints
             if (pts.rows() != 2) {
                 assert(pts.columns() == 2);
@@ -37,13 +37,13 @@ namespace acsr {
         }
 
 
-        PathPreprocessor(map_t *map, const std::vector<std::vector<double>> &pts, const param_t &vehicle_params,
+        PathPreprocessor(std::shared_ptr<valid_checker_t> valid_checker_ptr, const std::vector<std::vector<double>> &pts, const param_t &vehicle_params,
                          double min_edge_margin = 0.1,double max_edge_margin = 2.0) {
             DM waypoints = DM(pts);
-            PathPreprocessor(map, waypoints, vehicle_params, min_edge_margin, max_edge_margin);
+            PathPreprocessor(valid_checker_ptr, waypoints, vehicle_params, min_edge_margin, max_edge_margin);
         }
 
-        DM optimize(std::shared_ptr<Path> path_ptr,map_t* map,int resolution=100,double ds_holder = 0.5){
+        bool optimize(int resolution=100,double ds_holder = 0.5){
             auto ds = path_ptr->get_max_length()/resolution;
             if(ds>ds_holder){
                 ds=ds_holder;
@@ -52,9 +52,54 @@ namespace acsr {
             auto s = DM::linspace(0,path_ptr->get_max_length(),resolution+1);
             s = s.T();
             auto t = path_ptr->s_to_t_lookup(s)[0];
-            std::for_each(std::execution::par,t->begin(),t->end(),[](double value){
+            auto zero_n = DM::zeros(1,resolution+1);
 
+            //check centerline
+            auto center_line = path_ptr->f_tn_to_xy(DMVector{t,zero_n})[0];
+            for(auto i=0;i<resolution+1;++i){
+                if(!valid_checker_ptr_->valid(double(center_line(0,i)),double(center_line(1,i))))
+                    return false;
+            }
+
+            //auto n_array = DM::linspace(-max_edge_margin_,max_edge_margin_,2*steps+1).T();
+
+            //auto inner_n_array2 = DM::linspace(max_edge_margin_+max_edge_margin_/steps,2*max_edge_margin_,steps);
+            //auto outer_n_array2 = DM::linspace(-max_edge_margin_-max_edge_margin_/steps,-2*max_edge_margin_,steps);
+            //auto inner_n_array1 = DM::linspace(0,max_edge_margin_,steps+1);
+            //auto outer_n_array1 = DM::linspace(0,-max_edge_margin_,steps+1);
+
+            auto n_array = DM::linspace(-max_edge_margin_,max_edge_margin_,2*steps+1).T();
+            auto ones = DM::ones(1,2*steps+1).T();
+
+            std::vector<size_t> index_vect(resolution+1);
+            std::iota(index_vect.begin(),index_vect.end(),0);
+            std::vector<double> inner_boundary_vec(resolution+1,max_edge_margin_);
+            std::vector<double> outer_boundary_vec(resolution+1,-max_edge_margin_);
+
+            std::for_each(std::execution::par,index_vect.begin(),index_vect.end(),[&](size_t idx){
+                auto t_array = t(0,idx)*ones;
+                //auto inner_pts = path_ptr->f_tn_to_xy(DMVector{t_array,inner_n_array1})[0];
+                //auto outer_pts = path_ptr->f_tn_to_xy(DMVector{t_array,outer_n_array1})[0];
+                auto pts = path_ptr->f_tn_to_xy(DMVector{t_array,n_array})[0];
+                for(auto i=1;i<=steps;++i){
+                    if(!valid_checker_ptr_->valid(double(pts(0,steps+i)),double(pts(1,steps+i)))){
+                        inner_boundary_vec[idx]=double(n_array(0,steps+i-1));
+                        break;
+                    }
+                }
+
+                for(auto i=-1;i>=-steps;--i){
+                    if(!valid_checker_ptr_->valid(double(pts(0,steps+i)),double(pts(1,steps+i)))){
+                        outer_boundary_vec[idx]=double(n_array(0,steps+i+1));
+                        break;
+                    }
+                }
             });
+
+
+
+
+
         }
 
 
@@ -75,13 +120,16 @@ namespace acsr {
         }
 
 
+
+
     private:
+        const int steps = 10;
         int segments_;
         double max_edge_margin_;
         double min_edge_margin_;
         DM waypoints_;
         DM dist_vec_;
-        map_t *map_;
+        std::shared_ptr<valid_checker_t> valid_checker_ptr_;
         std::shared_ptr<Path> path_ptr;
 
         std::vector<int> split(int segment) {

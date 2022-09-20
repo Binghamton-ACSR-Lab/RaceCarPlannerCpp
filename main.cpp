@@ -10,6 +10,7 @@
 #include <tbb/tbb.h>
 #include <execution>
 #include "path.hpp"
+
 using namespace acsr;
 template<class T>
 T update(T& x,T& u){
@@ -66,10 +67,48 @@ void track_test(){
 
 }
 
+struct TypeTrue {
+    static constexpr bool enable_if_condition = true;
+};
+
+struct TypeFalse {
+    static constexpr bool enable_if_condition = false;
+};
+
+template <typename T>
+class MyClass {
+public:
+    template <typename C = T>
+    typename std::enable_if_t<!C::enable_if_condition, void>
+    test_fxn() {
+        if (T::enable_if_condition) {
+            std::cout << "AAAA" << std::endl;
+        }
+        std::cout << "BBBB" << std::endl;
+    }
+
+    template <typename C = T>
+    typename std::enable_if_t<C::enable_if_condition, void>
+    test_fxn() {
+        if (T::enable_if_condition) {
+            std::cout << "CCCC" << std::endl;
+        }
+        std::cout << "DDDD" << std::endl;
+    }
+};
+
 int main(int argc, char **argv) {
 
+    //auto a  = DM::linspace(-10,10,21);
+    //std::cout<<a<<std::endl;
+    MyClass<TypeTrue> a;
+    MyClass<TypeFalse> b;
+    a.test_fxn();
+    b.test_fxn();
+    return 0;
     //planner_test();
 
+    /*
     std::string half_track_data_file = "../data/tracks/temp_nwh_half.csv";
     auto reader = CSVReader(half_track_data_file);
     auto raw_data = reader.read();
@@ -79,7 +118,7 @@ int main(int argc, char **argv) {
     }
     std::cout<<waypoints<<std::endl;
     acsr::Path path(waypoints,7,50);
-    path.plot();
+    path.plot();*/
 
     //track_test();
 
