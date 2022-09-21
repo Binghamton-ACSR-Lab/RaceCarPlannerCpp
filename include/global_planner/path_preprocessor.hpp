@@ -43,7 +43,7 @@ namespace acsr {
             PathPreprocessor(valid_checker_ptr, waypoints, vehicle_params, min_edge_margin, max_edge_margin);
         }
 
-        bool optimize(int resolution=100,double ds_holder = 0.5){
+        std::tuple<bool,std::vector<std::vector<double>>> optimize(std::shared_ptr<Path> path_ptr, int resolution=100,double ds_holder = 0.5){
             auto ds = path_ptr->get_max_length()/resolution;
             if(ds>ds_holder){
                 ds=ds_holder;
@@ -58,7 +58,7 @@ namespace acsr {
             auto center_line = path_ptr->f_tn_to_xy(DMVector{t,zero_n})[0];
             for(auto i=0;i<resolution+1;++i){
                 if(!valid_checker_ptr_->valid(double(center_line(0,i)),double(center_line(1,i))))
-                    return false;
+                    return std::tuple(false,std::vector<std::vector<double>>{});
             }
 
             //auto n_array = DM::linspace(-max_edge_margin_,max_edge_margin_,2*steps+1).T();
@@ -68,38 +68,77 @@ namespace acsr {
             //auto inner_n_array1 = DM::linspace(0,max_edge_margin_,steps+1);
             //auto outer_n_array1 = DM::linspace(0,-max_edge_margin_,steps+1);
 
-            auto n_array = DM::linspace(-max_edge_margin_,max_edge_margin_,2*steps+1).T();
-            auto ones = DM::ones(1,2*steps+1).T();
+            auto n_array = DM::linspace(-2*max_edge_margin_,2*max_edge_margin_,4*steps+1).T();
+            auto ones = DM::ones(1,4*steps+1).T();
 
             std::vector<size_t> index_vect(resolution+1);
             std::iota(index_vect.begin(),index_vect.end(),0);
-            std::vector<double> inner_boundary_vec(resolution+1,max_edge_margin_);
-            std::vector<double> outer_boundary_vec(resolution+1,-max_edge_margin_);
+
+
+            std::vector<double> inner_boundary_vec(resolution+1,2*max_edge_margin_);
+            std::vector<double> outer_boundary_vec(resolution+1,-2*max_edge_margin_);
 
             std::for_each(std::execution::par,index_vect.begin(),index_vect.end(),[&](size_t idx){
                 auto t_array = t(0,idx)*ones;
                 //auto inner_pts = path_ptr->f_tn_to_xy(DMVector{t_array,inner_n_array1})[0];
                 //auto outer_pts = path_ptr->f_tn_to_xy(DMVector{t_array,outer_n_array1})[0];
                 auto pts = path_ptr->f_tn_to_xy(DMVector{t_array,n_array})[0];
-                for(auto i=1;i<=steps;++i){
-                    if(!valid_checker_ptr_->valid(double(pts(0,steps+i)),double(pts(1,steps+i)))){
-                        inner_boundary_vec[idx]=double(n_array(0,steps+i-1));
+                for(auto i=1;i<=2*steps;++i){
+                    if(!valid_checker_ptr_->valid(double(pts(0,2*steps+i)),double(pts(1,2*steps+i)))){
+                        inner_boundary_vec[idx]=double(n_array(0,2*steps+i-1));
                         break;
                     }
                 }
 
-                for(auto i=-1;i>=-steps;--i){
-                    if(!valid_checker_ptr_->valid(double(pts(0,steps+i)),double(pts(1,steps+i)))){
-                        outer_boundary_vec[idx]=double(n_array(0,steps+i+1));
+                for(auto i=-1;i>=-2*steps;--i){
+                    if(!valid_checker_ptr_->valid(double(pts(0,2*steps+i)),double(pts(1,2*steps+i)))){
+                        outer_boundary_vec[idx]=double(n_array(0,2*steps+i+1));
                         break;
                     }
                 }
             });
 
+            auto min_inner_dist = *std::min_element(inner_boundary_vec.begin(),inner_boundary_vec.end());
+            auto max_outer_dist = *std::max_element(outer_boundary_vec.begin(),outer_boundary_vec.end());
+            if(min_inner_dist>=max_edge_margin_ && max_outer_dist<=-max_edge_margin_)
+                return std::tuple(true,std::vector<std::vector<double>>{});
 
+            int it = 0;
+            std::vector<std::vector<double>> new_pts;
+            new_pts.push_back({0,0});
 
+            for(auto i=1;i<resolution;++i){
+                if(inner_boundary_vec[i]<min_edge_margin_ && outer_boundary_vec[i]>-min_edge_margin_){
+                    return std::tuple(false,std::vector<std::vector<double>>{});
+                }
 
-
+                if(inner_boundary_vec[i]>=max_edge_margin_ && outer_boundary_vec[i]<=-max_edge_margin_){
+                    ++it;
+                    if(it>=4){
+                        new_pts.push_back({double(t(0,i)),0});
+                        it=0;
+                    }
+                }else if(inner_boundary_vec[i]>=max_edge_margin_ && outer_boundary_vec[i]>-max_edge_margin_){
+                    if(inner_boundary_vec[i]-outer_boundary_vec[i]>=2*max_edge_margin_){
+                        new_pts.push_back({double(t(0,i)),outer_boundary_vec[i]+max_edge_margin_});
+                    }else{
+                        new_pts.push_back({double(t(0,i)),(outer_boundary_vec[i]+inner_boundary_vec[i])/2});
+                    }
+                    it=0;
+                }else if(inner_boundary_vec[i]<max_edge_margin_ && outer_boundary_vec[i]<=-max_edge_margin_){
+                    if(inner_boundary_vec[i]-outer_boundary_vec[i]>=2*max_edge_margin_){
+                        new_pts.push_back({double(t(0,i)),inner_boundary_vec[i]-max_edge_margin_});
+                    }else{
+                        new_pts.push_back({double(t(0,i)),(outer_boundary_vec[i]+inner_boundary_vec[i])/2});
+                    }
+                    it=0;
+                }else{
+                    new_pts.push_back({double(t(0,i)),(outer_boundary_vec[i]+inner_boundary_vec[i])/2});
+                    it=0;
+                }
+            }
+            new_pts.push_back({double(t(0,-1)),0});
+            return std::tuple(true,new_pts);
         }
 
 
@@ -113,7 +152,19 @@ namespace acsr {
                     new_pts(Slice(),i) = waypoints_(Slice(),idx_vec[i]);
                 }
 
-                path_ptr = std::make_shared<Path>(new_pts,7,50);
+                auto path_ptr = std::make_shared<Path>(new_pts,7,50);
+
+                for(auto i=0;i<5;++i){
+                    auto [success,new_path_vec] = optimize(path_ptr);
+                    if(!success)break;
+                    if(success && !new_path_vec.empty()){
+                        path_ptr_ = path_ptr;
+                        return true;
+                    }else{
+                        auto new_path = DM(new_path_vec);
+                        path_ptr = std::make_shared<Path>(new_path,7,50);
+                    }
+                }
 
             }
 
@@ -130,7 +181,7 @@ namespace acsr {
         DM waypoints_;
         DM dist_vec_;
         std::shared_ptr<valid_checker_t> valid_checker_ptr_;
-        std::shared_ptr<Path> path_ptr;
+        std::shared_ptr<Path> path_ptr_;
 
         std::vector<int> split(int segment) {
             auto all = Slice();

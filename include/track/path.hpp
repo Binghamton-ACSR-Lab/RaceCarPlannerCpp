@@ -20,16 +20,13 @@ namespace acsr {
     public:
         Path() = delete;
 
-        Path(const DM& pts, double max_width,int resolution = 100):max_width_(max_width) {
+        explicit Path(const DM& pts, double max_width,int resolution = 100):max_width_(max_width) {
             if(waypoints_.rows()!=2){
                 assert(pts.columns()==2);
                 waypoints_ = pts.T();
             }else{
                 waypoints_=pts;
             }
-
-
-
 
             pt_t = get_parametric_function(waypoints_);
             t_max = waypoints_.columns()-1;

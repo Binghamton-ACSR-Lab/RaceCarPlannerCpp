@@ -99,13 +99,12 @@ public:
 
 int main(int argc, char **argv) {
 
-    //auto a  = DM::linspace(-10,10,21);
-    //std::cout<<a<<std::endl;
-    MyClass<TypeTrue> a;
-    MyClass<TypeFalse> b;
-    a.test_fxn();
-    b.test_fxn();
-    return 0;
+    auto a  = DM::linspace(-10,10,21);
+    std::cout<<a<<std::endl;
+
+    auto b =DM::fmax(a,6);
+    std::cout<<b<<std::endl;
+
     //planner_test();
 
     /*
