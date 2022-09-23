@@ -19,8 +19,8 @@ namespace acsr {
     class PathPreprocessor {
 
     public:
-        PathPreprocessor(std::shared_ptr<valid_checker_t> valid_checker_ptr, DM &pts, const param_t &vehicle_params,
-                         double min_edge_margin = 0.1,double max_edge_margin = 2.0):
+        PathPreprocessor(std::shared_ptr<valid_checker_t> valid_checker_ptr, DM pts,
+                         double min_edge_margin = 1,double max_edge_margin = 8.0):
                          valid_checker_ptr_(valid_checker_ptr),min_edge_margin_(min_edge_margin),max_edge_margin_(max_edge_margin){
             //format waypoints
             if (pts.rows() != 2) {
@@ -29,26 +29,27 @@ namespace acsr {
             }
             auto all = Slice();
             waypoints_ = pts;
-
-            auto diff = pts(Slice(), Slice(1, pts.columns())) - pts(Slice(), Slice(0, -1));
-            auto dist = DM::sqrt(diff(0, all) * diff(0, all) + diff(1, all) * diff(1, all));
-            dist_vec_ = DM::cumsum(dist);
-
+            std::cout<<"Construct path from: \n"<<waypoints_<<std::endl;
+            original_path_ptr_=std::make_shared<Path>(pts,1);
+            //auto diff = pts(Slice(), Slice(1, pts.columns())) - pts(Slice(), Slice(0, -1));
+            //auto dist = DM::sqrt(diff(0, all) * diff(0, all) + diff(1, all) * diff(1, all));
+            //dist_vec_ = DM::cumsum(dist);
+            //std::cout<<"dist_vect_\n"<<dist_vec_;
         }
 
 
-        PathPreprocessor(std::shared_ptr<valid_checker_t> valid_checker_ptr, const std::vector<std::vector<double>> &pts, const param_t &vehicle_params,
-                         double min_edge_margin = 0.1,double max_edge_margin = 2.0) {
-            DM waypoints = DM(pts);
-            PathPreprocessor(valid_checker_ptr, waypoints, vehicle_params, min_edge_margin, max_edge_margin);
+        PathPreprocessor(std::shared_ptr<valid_checker_t> valid_checker_ptr, const std::vector<std::vector<double>> &pts,
+                         double min_edge_margin = 1,double max_edge_margin = 8.0) : PathPreprocessor(valid_checker_ptr, DM(pts), min_edge_margin, max_edge_margin) {
+
         }
 
         std::tuple<bool,std::vector<std::vector<double>>> optimize(std::shared_ptr<Path> path_ptr, int resolution=100,double ds_holder = 0.5){
+            /*
             auto ds = path_ptr->get_max_length()/resolution;
             if(ds>ds_holder){
                 ds=ds_holder;
                 resolution = path_ptr->get_max_length()/ds_holder;
-            }
+            }*/
             auto s = DM::linspace(0,path_ptr->get_max_length(),resolution+1);
             s = s.T();
             auto t = path_ptr->s_to_t_lookup(s)[0];
@@ -69,7 +70,7 @@ namespace acsr {
             //auto outer_n_array1 = DM::linspace(0,-max_edge_margin_,steps+1);
 
             auto n_array = DM::linspace(-2*max_edge_margin_,2*max_edge_margin_,4*steps+1).T();
-            auto ones = DM::ones(1,4*steps+1).T();
+            auto ones = DM::ones(1,4*steps+1);
 
             std::vector<size_t> index_vect(resolution+1);
             std::iota(index_vect.begin(),index_vect.end(),0);
@@ -79,9 +80,7 @@ namespace acsr {
             std::vector<double> outer_boundary_vec(resolution+1,-2*max_edge_margin_);
 
             std::for_each(std::execution::par,index_vect.begin(),index_vect.end(),[&](size_t idx){
-                auto t_array = t(0,idx)*ones;
-                //auto inner_pts = path_ptr->f_tn_to_xy(DMVector{t_array,inner_n_array1})[0];
-                //auto outer_pts = path_ptr->f_tn_to_xy(DMVector{t_array,outer_n_array1})[0];
+                auto t_array = double(t(0,idx))*ones;
                 auto pts = path_ptr->f_tn_to_xy(DMVector{t_array,n_array})[0];
                 for(auto i=1;i<=2*steps;++i){
                     if(!valid_checker_ptr_->valid(double(pts(0,2*steps+i)),double(pts(1,2*steps+i)))){
@@ -114,7 +113,7 @@ namespace acsr {
 
                 if(inner_boundary_vec[i]>=max_edge_margin_ && outer_boundary_vec[i]<=-max_edge_margin_){
                     ++it;
-                    if(it>=4){
+                    if(it>=8){
                         new_pts.push_back({double(t(0,i)),0});
                         it=0;
                     }
@@ -141,66 +140,199 @@ namespace acsr {
             return std::tuple(true,new_pts);
         }
 
+        bool process1() {
+            namespace plt = matplotlibcpp;
+            //std::cout<<waypoints_.rows()<<'\t'<<waypoints_.columns()<<'\n';
+            //std::cout<<dist_vec_.rows()<<'\t'<<dist_vec_.columns()<<'\n';
+            auto path_ptr = std::make_shared<Path>(waypoints_,path_width_,100);
+            auto t = DM::linspace(0,path_ptr->get_max_tau(),101).T();
+            auto n = DM::zeros(1,101);
+            auto kappa = path_ptr->f_kappa(t)[0];
 
-        DM process(DM &pts) {
-            auto total_waypoints = waypoints_.columns();
-            for(auto idx=2;idx<total_waypoints-1;++idx) {
-                auto idx_vec = split(idx);
+
+            auto collision = valid_checker_ptr_->plot_data();
+            for(auto& data:collision)
+                plt::plot(data.first,data.second,"k-");
+
+            //plt::show();
+
+            for(auto segment=3;segment<total_waypoints-1;++segment) {
+                auto new_pts = split(segment);
+                /*printArray(idx_vec);
                 DM new_pts(2,idx+1);
 
                 for(auto i=0;i<idx+1;++i){
                     new_pts(Slice(),i) = waypoints_(Slice(),idx_vec[i]);
+                }*/
+
+                auto path_ptr = std::make_shared<Path>(new_pts,path_width_,50);
+                {
+                    auto t = DM::linspace(0,path_ptr->get_max_tau(),101).T();
+                    auto n = DM::zeros(1,101);
+                    auto center_line = path_ptr->f_tn_to_xy(DMVector{t,n})[0];
+                    auto center_x_dm = center_line(0,Slice());
+                    auto center_y_dm = center_line(1,Slice());
+                    plt::named_plot(std::to_string(segment),std::vector<double>{center_x_dm->begin(),center_x_dm->end()},
+                                    std::vector<double>{center_y_dm->begin(),center_y_dm->end()});
+                    //plt::show();
                 }
 
-                auto path_ptr = std::make_shared<Path>(new_pts,7,50);
-
+                bool success;
+                std::vector<std::vector<double>> new_path_vec;
                 for(auto i=0;i<5;++i){
-                    auto [success,new_path_vec] = optimize(path_ptr);
+                    std::tie(success,new_path_vec) = optimize(path_ptr);
                     if(!success)break;
-                    if(success && !new_path_vec.empty()){
+                    if(new_path_vec.empty()){
                         path_ptr_ = path_ptr;
+                        plt::legend();
+                        plt::show();
                         return true;
                     }else{
                         auto new_path = DM(new_path_vec);
-                        path_ptr = std::make_shared<Path>(new_path,7,50);
+
+                        path_ptr = std::make_shared<Path>(new_path,path_width_,50);
+                        /*
+                        {
+                            auto t = DM::linspace(0,path_ptr->get_max_tau(),101).T();
+                            auto n = DM::zeros(1,101);
+                            auto center_line = path_ptr->f_tn_to_xy(DMVector{t,n})[0];
+                            auto center_x_dm = center_line(0,Slice());
+                            auto center_y_dm = center_line(1,Slice());
+                            plt::named_plot(std::to_string(segment)+"-"+std::to_string(i),std::vector<double>{center_x_dm->begin(),center_x_dm->end()},
+                                            std::vector<double>{center_y_dm->begin(),center_y_dm->end()});
+                            //plt::show();
+                        }*/
                     }
                 }
-
+                if(success){
+                    path_ptr_=path_ptr;
+                    plt::legend();
+                    plt::show();
+                    return true;
+                }
             }
+            plt::legend();
+            plt::show();
+            return false;
+        }
 
+
+        bool process() {
+            namespace plt = matplotlibcpp;
+            //std::cout<<waypoints_.rows()<<'\t'<<waypoints_.columns()<<'\n';
+            //std::cout<<dist_vec_.rows()<<'\t'<<dist_vec_.columns()<<'\n';
+
+
+            auto total_waypoints = waypoints_.columns();
+            auto collision = valid_checker_ptr_->plot_data();
+            for(auto& data:collision)
+                plt::plot(data.first,data.second,"k-");
+
+            //plt::show();
+
+            for(auto segment=3;segment<total_waypoints-1;++segment) {
+                auto new_pts = split(segment);
+                /*printArray(idx_vec);
+                DM new_pts(2,idx+1);
+
+                for(auto i=0;i<idx+1;++i){
+                    new_pts(Slice(),i) = waypoints_(Slice(),idx_vec[i]);
+                }*/
+
+                auto path_ptr = std::make_shared<Path>(new_pts,path_width_,50);
+                {
+                    auto t = DM::linspace(0,path_ptr->get_max_tau(),101).T();
+                    auto n = DM::zeros(1,101);
+                    auto center_line = path_ptr->f_tn_to_xy(DMVector{t,n})[0];
+                    auto center_x_dm = center_line(0,Slice());
+                    auto center_y_dm = center_line(1,Slice());
+                    plt::named_plot(std::to_string(segment),std::vector<double>{center_x_dm->begin(),center_x_dm->end()},
+                              std::vector<double>{center_y_dm->begin(),center_y_dm->end()});
+                    //plt::show();
+                }
+
+                bool success;
+                std::vector<std::vector<double>> new_path_vec;
+                for(auto i=0;i<5;++i){
+                    std::tie(success,new_path_vec) = optimize(path_ptr);
+                    if(!success)break;
+                    if(new_path_vec.empty()){
+                        path_ptr_ = path_ptr;
+                        plt::legend();
+                        plt::show();
+                        return true;
+                    }else{
+                        auto new_path = DM(new_path_vec);
+
+                        path_ptr = std::make_shared<Path>(new_path,path_width_,50);
+                        /*
+                        {
+                            auto t = DM::linspace(0,path_ptr->get_max_tau(),101).T();
+                            auto n = DM::zeros(1,101);
+                            auto center_line = path_ptr->f_tn_to_xy(DMVector{t,n})[0];
+                            auto center_x_dm = center_line(0,Slice());
+                            auto center_y_dm = center_line(1,Slice());
+                            plt::named_plot(std::to_string(segment)+"-"+std::to_string(i),std::vector<double>{center_x_dm->begin(),center_x_dm->end()},
+                                            std::vector<double>{center_y_dm->begin(),center_y_dm->end()});
+                            //plt::show();
+                        }*/
+                    }
+                }
+                if(success){
+                    path_ptr_=path_ptr;
+                    plt::legend();
+                    plt::show();
+                    return true;
+                }
+            }
+            plt::legend();
+            plt::show();
+            return false;
         }
 
 
 
 
     private:
+        const double path_width_ = 8.0;
         const int steps = 10;
-        int segments_;
         double max_edge_margin_;
         double min_edge_margin_;
         DM waypoints_;
-        DM dist_vec_;
+        //DM dist_vec_;
         std::shared_ptr<valid_checker_t> valid_checker_ptr_;
         std::shared_ptr<Path> path_ptr_;
+        std::shared_ptr<Path> original_path_ptr_;
 
-        std::vector<int> split(int segment) {
-            auto all = Slice();
-            if (segment == 1)return std::vector<int>{0,waypoints_.columns()-1};
 
-            std::vector<int> result(segment + 1);
-            result[0]=0;
-            result[segment] = waypoints_.columns()-1;
+        DM split(int segment) {
+
+            if (segment == 1)return std::vector<size_t>{0,waypoints_.columns()-1};
+            auto s_max  = original_path_ptr_->get_max_length();
+            auto s_vec = DM::linspace(0,s_max,segment+1).T();
+            auto t_vec = original_path_ptr_->s_to_t_lookup(s_vec)[0];
+            auto n_vec = DM::zeros(1,segment+1);
+            return original_path_ptr_->f_tn_to_xy(DMVector{t_vec,n_vec})[0];
+
+
+/*
+            std::vector<size_t> result;
+            result.push_back(0);
+            //result[segment] = waypoints_.columns()-1;
 
             auto segment_dist = double(dist_vec_(0, -1)) / segment;
             int idx = 0;
             for (auto i = 0; i < dist_vec_.columns()-1; ++i) {
                 if ((double(dist_vec_(0, i)) <= segment_dist * (idx + 1) &&
-                    double(dist_vec_(0, i + 1)) >= segment_dist * (idx + 1)) || dist_vec_.columns()-i-1<=segment-idx) {
-                    result[idx+1] = i;
+                    double(dist_vec_(0, i + 1)) > segment_dist * (idx + 1))) {
+                    result.push_back(i+1);
                     ++idx;
-                    if (idx == segment - 1)return result;
                 }
             }
+            result.push_back(waypoints_.columns()-1);
+            auto it = std::unique(result.begin(),result.end());
+            result.erase(it,result.end());
+            return result;*/
         }
 
 

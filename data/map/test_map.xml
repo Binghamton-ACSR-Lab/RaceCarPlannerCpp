@@ -1,83 +1,23 @@
 <file>
-    <circle>
-        <radius>75</radius>
-        <x>150</x>
-        <y>400</y>
-    </circle>
-    <rectangle>
-        <x>0</x>
-        <y>0</y>
-        <width>300</width>
-        <height>300</height>
-    </rectangle>
-    <rectangle>
-        <x>350</x>
-        <y>200</y>
-        <width>300</width>
-        <height>300</height>
-    </rectangle>
-    <point>
-        <x>520</x>
-        <y>80</y>
-    </point>
-    <point>
-        <x>500</x>
-        <y>110</y>
-    </point>
-    <point>
-        <x>450</x>
-        <y>130</y>
-    </point>
-    <point>
-        <x>430</x>
-        <y>110</y>
-    </point>
-    <point>
-        <x>380</x>
-        <y>120</y>
-    </point>
-    <point>
-        <x>380</x>
-        <y>150</y>
-    </point>
-    <point>
-        <x>340</x>
-        <y>160</y>
-    </point>
-    <point>
-        <x>330</x>
-        <y>200</y>
-    </point>
-    <point>
-        <x>330</x>
-        <y>240</y>
-    </point>
-    <point>
-        <x>320</x>
-        <y>290</y>
-    </point>
-    <point>
-        <x>300</x>
-        <y>330</y>
-    </point>
-    <point>
-        <x>240</x>
-        <y>320</y>
-    </point>
-    <point>
-        <x>190</x>
-        <y>310</y>
-    </point>
-    <point>
-        <x>130</x>
-        <y>320</y>
-    </point>
-    <point>
-        <x>60</x>
-        <y>350</y>
-    </point>
-    <point>
-        <x>30</x>
-        <y>360</y>
-    </point>
+    <circle radius="75" x="150" y="400" />
+    <rectangle  x="0" y="0" width="300" height="300" />
+    <rectangle x="350" y="200" width="300" height="300" />
+    <waypoints>
+        <point x="520" y="80" />
+        <point x="500" y="110" />
+        <point x="450" y="130" />
+        <point x="430" y="110" />
+        <point x="380" y="120" />
+        <point x="380" y="150" />
+        <point x="340" y="160" />
+        <point x="330" y="200" />
+        <point x="330" y="240" />
+        <point x="320" y="290" />
+        <point x="300" y="330" />
+        <point x="240" y="320" />
+        <point x="190" y="310" />
+        <point x="130" y="320" />
+        <point x="60" y="350" />
+        <point x="30" y="360" />
+    </waypoints>
 </file>

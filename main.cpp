@@ -10,8 +10,12 @@
 #include <tbb/tbb.h>
 #include <execution>
 #include "path.hpp"
+#include "test_map.hpp"
+#include "path_preprocessor.hpp"
 
 using namespace acsr;
+namespace plt = matplotlibcpp;
+
 template<class T>
 T update(T& x,T& u){
     return T::vertcat({x,u});
@@ -67,43 +71,36 @@ void track_test(){
 
 }
 
-struct TypeTrue {
-    static constexpr bool enable_if_condition = true;
-};
-
-struct TypeFalse {
-    static constexpr bool enable_if_condition = false;
-};
-
-template <typename T>
-class MyClass {
-public:
-    template <typename C = T>
-    typename std::enable_if_t<!C::enable_if_condition, void>
-    test_fxn() {
-        if (T::enable_if_condition) {
-            std::cout << "AAAA" << std::endl;
+void path_preprocessor_test(){
+    std::vector<std::vector<double>> pts;
+    auto filename = std::string("../data/map/test_map.xml");
+    tinyxml2::XMLDocument doc;
+    doc.LoadFile( filename.c_str());
+    auto root = doc.RootElement();
+    for (tinyxml2::XMLElement* element = root->FirstChildElement(); element != nullptr; element = element->NextSiblingElement())
+    {
+        if(strcmp(element->Name(),"waypoints")==0){
+            for (tinyxml2::XMLElement* child = element->FirstChildElement(); child != nullptr; child = child->NextSiblingElement()){
+                if(strcmp(child->Name(),"point")==0) {
+                    auto x = child->DoubleAttribute("x");
+                    auto y = child->DoubleAttribute("y");
+                    pts.push_back({x, y});
+                }
+            }
         }
-        std::cout << "BBBB" << std::endl;
     }
+    std::cout<<"Total points: "<<pts.size()<<std::endl;
 
-    template <typename C = T>
-    typename std::enable_if_t<C::enable_if_condition, void>
-    test_fxn() {
-        if (T::enable_if_condition) {
-            std::cout << "CCCC" << std::endl;
-        }
-        std::cout << "DDDD" << std::endl;
-    }
-};
+    auto test_map_ptr = std::make_shared<TestMap>(filename);
+    PathPreprocessor<TestMap> preprocessor(test_map_ptr,pts);
+    preprocessor.process();
+
+}
 
 int main(int argc, char **argv) {
 
-    auto a  = DM::linspace(-10,10,21);
-    std::cout<<a<<std::endl;
 
-    auto b =DM::fmax(a,6);
-    std::cout<<b<<std::endl;
+    path_preprocessor_test();
 
     //planner_test();
 

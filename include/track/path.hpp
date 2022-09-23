@@ -20,7 +20,8 @@ namespace acsr {
     public:
         Path() = delete;
 
-        explicit Path(const DM& pts, double max_width,int resolution = 100):max_width_(max_width) {
+        explicit Path(DM pts, double max_width,int resolution = 100):max_width_(max_width) {
+            waypoints_=pts;
             if(waypoints_.rows()!=2){
                 assert(pts.columns()==2);
                 waypoints_ = pts.T();
