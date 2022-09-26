@@ -15,6 +15,7 @@
 namespace acsr {
     using namespace casadi;
     using param_t = std::map<std::string, double>;
+    typedef bg::model::point<double, 2, bg::cs::cartesian> point_t;
 
     template<class valid_checker_t,class collision_field_t>
     class WaypointsProcessor {
@@ -137,83 +138,53 @@ namespace acsr {
 
 
         bool process() {
-            namespace plt = matplotlibcpp;
-            //std::cout<<waypoints_.rows()<<'\t'<<waypoints_.columns()<<'\n';
-            //std::cout<<dist_vec_.rows()<<'\t'<<dist_vec_.columns()<<'\n';
 
-
-            auto total_waypoints = waypoints_.columns();
-            auto collision = valid_checker_ptr_->plot_data();
-            for(auto& data:collision)
-                plt::plot(data.first,data.second,"k-");
-
-            //plt::show();
-
-            for(auto segment=3;segment<total_waypoints-1;++segment) {
-                auto new_pts = split(segment);
-                /*printArray(idx_vec);
-                DM new_pts(2,idx+1);
-
-                for(auto i=0;i<idx+1;++i){
-                    new_pts(Slice(),i) = waypoints_(Slice(),idx_vec[i]);
-                }*/
-
-                auto path_ptr = std::make_shared<Path>(new_pts,path_width_,50);
-                {
-                    auto t = DM::linspace(0,path_ptr->get_max_tau(),101).T();
-                    auto n = DM::zeros(1,101);
-                    auto center_line = path_ptr->f_tn_to_xy(DMVector{t,n})[0];
-                    auto center_x_dm = center_line(0,Slice());
-                    auto center_y_dm = center_line(1,Slice());
-                    plt::named_plot(std::to_string(segment),std::vector<double>{center_x_dm->begin(),center_x_dm->end()},
-                                    std::vector<double>{center_y_dm->begin(),center_y_dm->end()});
-                    //plt::show();
-                }
-
-                bool success;
-                std::vector<std::vector<double>> new_path_vec;
-                for(auto i=0;i<5;++i){
-                    std::tie(success,new_path_vec) = optimize(path_ptr);
-                    if(!success)break;
-                    if(new_path_vec.empty()){
-                        path_ptr_ = path_ptr;
-                        plt::legend();
-                        plt::show();
-                        return true;
-                    }else{
-                        auto new_path = DM(new_path_vec);
-
-                        path_ptr = std::make_shared<Path>(new_path,path_width_,50);
-                        /*
-                        {
-                            auto t = DM::linspace(0,path_ptr->get_max_tau(),101).T();
-                            auto n = DM::zeros(1,101);
-                            auto center_line = path_ptr->f_tn_to_xy(DMVector{t,n})[0];
-                            auto center_x_dm = center_line(0,Slice());
-                            auto center_y_dm = center_line(1,Slice());
-                            plt::named_plot(std::to_string(segment)+"-"+std::to_string(i),std::vector<double>{center_x_dm->begin(),center_x_dm->end()},
-                                            std::vector<double>{center_y_dm->begin(),center_y_dm->end()});
-                            //plt::show();
-                        }*/
-                    }
-                }
-                if(success){
-                    path_ptr_=path_ptr;
-                    plt::legend();
-                    plt::show();
-                    return true;
-                }
+            DM points;
+            std::vector<int> index_vec;
+            std::tie(points,index_vec) = split();
+            points_history.push_back(points);
+            auto total_waypoints = points.columns();
+            auto M = m_*DM::eye(total_waypoints);
+            for(auto i:index_vec){
+                M(i,i) = m_key_point_;
             }
-            plt::legend();
-            plt::show();
-            return false;
+
+            for(auto idx = 0;idx<total_its;++idx){
+
+                auto force_between_points = get_force_between_points(points);
+                std::vector<std::vector<double>> pts;
+                for(auto i=0;i<total_waypoints;++i){
+                    pts.push_back({double(points(0,i)),double(points(1,i))});
+                }
+
+                std::vector<std::vector<double>> collision_force = collision_field_ptr_->get_force(pts,max_edge_margin_);
+                auto force_from_collision = DM(collision_force).T();
+                auto total_force = force_between_points+force_from_collision;
+                auto ax = DM::solve(M,total_force(0,Slice()).T());
+                auto ay = DM::solve(M,total_force(1,Slice()).T());
+                auto a = DM::horzcat({ax,ay});
+                //std::cout<<"a=\n"<<a<<std::endl;
+                //std::cout<<points.size();
+                points = points + step_size_ * a.T();
+                points_history.push_back(points);
+            }
+
+        }
+
+        std::vector<DM> get_history_data(){
+            return points_history;
         }
 
 
-
-
     private:
+        std::vector<DM> points_history;
+        const double step_size_ = 1;
+        const double waypoint_hold_distance = 10.0;
+        const double k_distance =1.0;
+        const double m_ = 10.0;
+        const double m_key_point_ = 20.0;
         const double path_width_ = 8.0;
+        const int total_its = 100;
         const int steps = 10;
         double max_edge_margin_{};
         double min_edge_margin_{};
@@ -225,16 +196,46 @@ namespace acsr {
         std::shared_ptr<Path> original_path_ptr_;
 
 
-        DM split(int segment) {
+        std::tuple<DM,std::vector<int>> split() {
+            DM dm;
+            std::vector<int> index_vec;
+            auto dm_diff = waypoints_(Slice(),Slice(1,waypoints_.columns())) - waypoints_(Slice(),Slice(0,-1));
+            auto d = DM::sqrt(dm_diff(0,Slice())*dm_diff(0,Slice())+dm_diff(1,Slice())*dm_diff(1,Slice()));
 
-            if (segment == 1)return std::vector<size_t>{0,waypoints_.columns()-1};
-            auto s_max  = original_path_ptr_->get_max_length();
-            auto s_vec = DM::linspace(0,s_max,segment+1).T();
-            auto t_vec = original_path_ptr_->s_to_t_lookup(s_vec)[0];
-            auto n_vec = DM::zeros(1,segment+1);
-            return original_path_ptr_->f_tn_to_xy(DMVector{t_vec,n_vec})[0];
+            for(auto i=0;i<waypoints_.columns()-1;++i){
+                index_vec.push_back(dm.columns());
+                if(double(d(0,i))<=waypoint_hold_distance){
+                    dm = DM::horzcat({dm,waypoints_(0,i).T()});
+                }else{
+                    auto segment = std::ceil(double(d(0,i))/waypoint_hold_distance)+1;
+                    auto new_dm = DM::linspace(waypoints_(Slice(),i).T(),waypoints_(Slice(),i+1).T(),segment);
+                    //std::cout<<"new dm size: "<<new_dm.rows()<<'\t'<<new_dm.columns()<<std::endl;
+                    dm = DM::horzcat({dm,new_dm.T()(Slice(),Slice(0,-1))});
+                }
 
+            }
+            index_vec.push_back(dm.columns());
+
+            dm = DM::horzcat({dm,waypoints_(Slice(),-1)});
+            dm = DM::reshape(dm,2,dm.rows()*dm.columns()/2);
+
+
+            return {dm,index_vec};
         }
+
+        DM get_force_between_points(DM& points){
+            DM force(2,points.columns());
+
+
+            for(auto i=1;i<points.columns()-1;++i){
+                force(Slice(),i) = k_distance*(points(Slice(),i+1)-points(Slice(),i))+k_distance*(points(Slice(),i-1)-points(Slice(),i));
+            }
+            force(Slice(),0) = k_distance*(points(Slice(),1)-points(Slice(),0));
+            force(Slice(),-1) = k_distance*(points(Slice(),-2)-points(Slice(),-1));
+            return force;
+        }
+
+
 
 
     };

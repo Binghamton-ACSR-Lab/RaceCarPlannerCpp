@@ -49,13 +49,37 @@ namespace acsr{
             });
         }
 
+        template<class T>
+        std::vector<T> get_force(std::vector<T> const& vec,double max_edge_margin){
+
+            std::vector<T> result;
+            for(auto i=0;i<vec.size();++i){
+                point_t pt{vec[i][0],vec[i][1]};
+                T force{0,0};
+
+                for(auto& s : shapes) {
+                    auto dist_poly = point_to_polygon(pt, s);
+
+                    if (dist_poly.distance < max_edge_margin) {
+                        auto dx = (pt.get<0>() - dist_poly.projected_point.get<0>()) / dist_poly.distance;
+                        auto dy = (pt.get<1>() - dist_poly.projected_point.get<1>()) / dist_poly.distance;
+                        auto k = force_ratio/(dist_poly.distance*dist_poly.distance);
+                        force = T{force[0] + k * dx, force[1] +k*dy};
+                    }
+                }
+                result.push_back(force);
+
+            }
+            return result;
+        }
+
         std::vector<std::pair<std::vector<double>,std::vector<double>>> plot_data(){
             std::vector<std::pair<std::vector<double>,std::vector<double>>> pts;
             for(auto& shape: shapes) {
                 std::vector<double> x,y;
                 bg::for_each_point(shape,[&x,&y](point_t& pt){
                     x.push_back(pt.get<0>());
-                    y.push_back(pt.get<0>());
+                    y.push_back(pt.get<1>());
                 });
                 pts.emplace_back(x,y);
             }
@@ -90,10 +114,13 @@ namespace acsr{
             shapes.push_back(polygon_t{pts});
         }
 
+
+
     private:
         //std::vector<std::shared_ptr<Shape<double>>> shapes;
         //std::vector<Circle<double>> circles;
         std::vector<polygon_t> shapes;
+        const double force_ratio = 1e3;
     };
 
 }

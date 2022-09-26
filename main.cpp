@@ -14,7 +14,7 @@
 #include "path_preprocessor.hpp"
 
 #include "test.h"
-
+#include "waypoints_processor.hpp"
 using namespace acsr;
 namespace plt = matplotlibcpp;
 
@@ -32,6 +32,50 @@ void planner_test(){
     BicycleDynamicsTwoBrakeGlobalPlanner planner(track_data_file,track_config_file,front_tire_file,rear_tire_file);
     planner.plan_refine(110.01,410.01,0,0.15,100);
     planner.plot_trajectory();
+}
+
+void waypoint_process_test(){
+    namespace plt = matplotlibcpp;
+    std::vector<std::vector<double>> pts;
+    auto filename = std::string("../data/map/test_map.xml");
+    tinyxml2::XMLDocument doc;
+    doc.LoadFile( filename.c_str());
+    auto root = doc.RootElement();
+    for (tinyxml2::XMLElement* element = root->FirstChildElement(); element != nullptr; element = element->NextSiblingElement())
+    {
+        if(strcmp(element->Name(),"waypoints")==0){
+            for (tinyxml2::XMLElement* child = element->FirstChildElement(); child != nullptr; child = child->NextSiblingElement()){
+                if(strcmp(child->Name(),"point")==0) {
+                    auto x = child->DoubleAttribute("x");
+                    auto y = child->DoubleAttribute("y");
+                    pts.push_back({x, y});
+                }
+            }
+        }
+    }
+    std::cout<<"Total points: "<<pts.size()<<std::endl;
+
+    auto test_map_ptr = std::make_shared<TestMap>(filename);
+
+
+    WaypointsProcessor<TestMap,TestMap> processor(test_map_ptr,test_map_ptr,pts);
+    processor.process();
+    auto collision = test_map_ptr->plot_data();
+    for(auto& data:collision){
+        plt::plot(data.first,data.second,"k-");
+    }
+
+    auto history_data = processor.get_history_data();
+    for(auto i=0;i<history_data.size();++i){
+        auto& dm = history_data[i];
+        auto x = dm(0,Slice());
+        auto y=dm(1,Slice());
+        if(i%9==0)
+            plt::named_plot(std::to_string(i),std::vector<double>(x->begin(),x->end()),std::vector<double>(y->begin(),y->end()));
+    }
+    plt::legend();
+    plt::show();
+
 }
 
 void track_test(){
@@ -98,12 +142,22 @@ void path_preprocessor_test(){
     preprocessor.process();
 
 }
-
+using namespace std;
 int main(int argc, char **argv) {
+    DM aa{1,2},bb{3,4};
+    auto a = std::vector<std::vector<double>>{{1,2},{3,4}};
+    auto b = std::vector<std::vector<double>>{{4,2,5},{1,1,4}};
 
+    auto dm_a = DM(a);
+    auto dm_b = DM(b);
+
+
+
+
+    waypoint_process_test();
 
     //path_preprocessor_test();
-    bgi_distance_test();
+    //bgi_distance_test();
     //planner_test();
 
     /*

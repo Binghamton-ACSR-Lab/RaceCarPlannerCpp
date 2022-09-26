@@ -17,6 +17,7 @@ void bgi_distance_test(){
 
     point_t pt{2,8};
 
+
     auto segments = boost::make_iterator_range(bg::segments_begin(polygon), bg::segments_end(polygon));
     for(auto segment : segments){
         //std::cout<<"("<<segment.first->get<0>()<<","<<segment.first->get<1>()<<")\t"
@@ -31,6 +32,8 @@ void bgi_distance_test(){
 
 
 }
+
+
 
 
 #endif //RACECARPLANNER_TEST_H
