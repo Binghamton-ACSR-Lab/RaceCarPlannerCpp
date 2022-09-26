@@ -26,7 +26,7 @@ include_directories(include
         include/vehicle
         include/map)
 
-add_executable(RaceCarPlanner main.cpp)
+add_executable(RaceCarPlanner main.cpp include/global_planner/waypoints_processor.hpp)
 target_include_directories(RaceCarPlanner PRIVATE ${Python3_INCLUDE_DIRS} ${Python3_NumPy_INCLUDE_DIRS} )
 target_link_libraries(RaceCarPlanner SQLiteCpp sqlite3 casadi gtest gtest_main ${PYTHON_LIBRARIES} Python3::NumPy yaml-cpp pthread dl tbb tinyxml2)
 #add_test( RaceCarPlanner RaceCarPlanner )

@@ -13,6 +13,8 @@
 #include "test_map.hpp"
 #include "path_preprocessor.hpp"
 
+#include "test.h"
+
 using namespace acsr;
 namespace plt = matplotlibcpp;
 
@@ -100,8 +102,8 @@ void path_preprocessor_test(){
 int main(int argc, char **argv) {
 
 
-    path_preprocessor_test();
-
+    //path_preprocessor_test();
+    bgi_distance_test();
     //planner_test();
 
     /*
