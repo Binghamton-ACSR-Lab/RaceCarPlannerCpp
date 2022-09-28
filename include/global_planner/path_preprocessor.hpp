@@ -17,7 +17,6 @@ namespace acsr {
 
     template<class valid_checker_t>
     class PathPreprocessor {
-
     public:
         PathPreprocessor(std::shared_ptr<valid_checker_t> valid_checker_ptr, DM pts,
                          double min_edge_margin = 1,double max_edge_margin = 8.0):

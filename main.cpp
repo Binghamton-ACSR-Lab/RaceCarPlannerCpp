@@ -58,21 +58,25 @@ void waypoint_process_test(){
     auto test_map_ptr = std::make_shared<TestMap>(filename);
 
 
-    WaypointsProcessor<TestMap,TestMap> processor(test_map_ptr,test_map_ptr,pts);
-    processor.process();
+    WaypointsProcessor<TestMap> processor(test_map_ptr,pts);
+    processor.process(true);
     auto collision = test_map_ptr->plot_data();
     for(auto& data:collision){
         plt::plot(data.first,data.second,"k-");
     }
 
     auto history_data = processor.get_history_data();
+
     for(auto i=0;i<history_data.size();++i){
         auto& dm = history_data[i];
         auto x = dm(0,Slice());
         auto y=dm(1,Slice());
-        if(i%9==0)
+        if(i%99==0)
             plt::named_plot(std::to_string(i),std::vector<double>(x->begin(),x->end()),std::vector<double>(y->begin(),y->end()));
     }
+
+
+
     plt::legend();
     plt::show();
 
@@ -151,10 +155,12 @@ int main(int argc, char **argv) {
     auto dm_a = DM(a);
     auto dm_b = DM(b);
 
+    DM c{11.0};
+    std::cout<<dm_a-c<<endl;
+    std::cout<<DM::mtimes(dm_a,aa)<<endl;
+    std::cout<<DM::mmax(dm_a);
 
-
-
-    waypoint_process_test();
+    //waypoint_process_test();
 
     //path_preprocessor_test();
     //bgi_distance_test();

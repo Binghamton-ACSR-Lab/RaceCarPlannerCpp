@@ -47,6 +47,21 @@ DistancePoint<P> point_to_polygon(P const& pt, bg::model::polygon<P> const& poly
     return distance_point;
 }
 
+/***
+ *
+ * @tparam T type
+ * @param x1 vector 1 x
+ * @param y1 vector 1 y
+ * @param x2 vector 2 x
+ * @param y2 vector 2 y
+ * @return measured in a counterclockwise direction from v1 to v2. true if v1 to v2 <180 degree
+ */
+template<typename T>
+bool two_vector_relative_pos(T x1,T y1,T x2,T y2){
+    auto a = std::atan2(x1*y2-y1*x2,x1*x2+y1*y2);
+    return std::signbit(a);
+}
+
 namespace acsr{
     template<typename T>
     void printArray(T& arr){

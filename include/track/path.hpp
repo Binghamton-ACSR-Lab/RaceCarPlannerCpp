@@ -79,6 +79,19 @@ namespace acsr {
 
             f_tn_to_xy = casadi::Function("tn_to_xy",{t,n},{xy});
 
+            auto phi = f_phi(t)[0];
+            //auto phi_rot_mat_vector = MX(2,2);
+            //phi_rot_mat_vector(0,0) = MX::cos(phi);
+            //phi_rot_mat_vector(0,1) = MX::sin(phi);
+            //phi_rot_mat_vector(1,0) = -MX::sin(phi);
+            //phi_rot_mat_vector(1,1) = MX::cos(phi);
+
+            MX dm_xy;
+            auto dm_n = -MX::sin(phi)*(dm_xy-pt_t_mx)(0) + MX::cos(phi)*(dm_xy-pt_t_mx)(1);
+            //auto tn = MX::mtimes(phi_rot_mat_vector,dm_xy-pt_t_mx);
+            f_xy_to_tn = casadi::Function("xy_to_tn",{dm_xy,t},{dm_n});
+            //MX::mtimes(phi_rot_mat_vector,)
+
             center_line = f_tn_to_xy(DMVector {ts.T(),ns_zeros.T()})[0];
             //std::cout<<center_line_test.size()<<std::endl;
 
@@ -145,6 +158,7 @@ namespace acsr {
         casadi::Function s_to_t_lookup;
         casadi::Function t_to_s_lookup;
         casadi::Function f_tn_to_xy;
+        casadi::Function f_xy_to_tn;
     private:
         casadi::DM waypoints_;
         const double max_width_;

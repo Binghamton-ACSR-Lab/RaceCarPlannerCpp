@@ -50,6 +50,22 @@ namespace acsr{
         }
 
         template<class T>
+        std::vector<std::pair<double,T>> near_collides(double distance_holder,double x,double y){
+            point_t pt{x,y};
+            std::vector<std::tuple<double,T>> result;
+            //DistancePoint<point_t> distance_point{};
+            //distance_point.distance = std::numeric_limits<double>::max();
+            for(auto& s : shapes) {
+                auto dist_poly = point_to_polygon(pt, s);
+
+                if (dist_poly.distance < distance_holder) {
+                    result.push_back(std::make_pair(dist_poly.distance,T{dist_poly.projected_point.get<0>(),dist_poly.projected_point.get<1>()}));
+                }
+            }
+            return result;
+        }
+
+        template<class T>
         std::vector<T> get_force(std::vector<T> const& vec,double max_edge_margin){
 
             std::vector<T> result;

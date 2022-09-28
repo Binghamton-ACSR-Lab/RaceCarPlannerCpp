@@ -17,15 +17,14 @@ namespace acsr {
     using param_t = std::map<std::string, double>;
     typedef bg::model::point<double, 2, bg::cs::cartesian> point_t;
 
-    template<class valid_checker_t,class collision_field_t>
+    template<class valid_checker_t>
     class WaypointsProcessor {
 
     public:
         WaypointsProcessor(std::shared_ptr<valid_checker_t> valid_checker_ptr,
-                           std::shared_ptr<collision_field_t> collision_field_ptr,
                            DM pts,
                            double min_edge_margin = 1,double max_edge_margin = 8.0)
-                           :valid_checker_ptr_(valid_checker_ptr),collision_field_ptr_(collision_field_ptr),min_edge_margin_(min_edge_margin),max_edge_margin_(max_edge_margin){
+                           :valid_checker_ptr_(valid_checker_ptr),min_edge_margin_(min_edge_margin),max_edge_margin_(max_edge_margin){
             //format waypoints
             if (pts.rows() != 2) {
                 assert(pts.columns() == 2);
@@ -38,10 +37,9 @@ namespace acsr {
 
 
         WaypointsProcessor(std::shared_ptr<valid_checker_t> valid_checker_ptr,
-                           std::shared_ptr<collision_field_t> collision_field_ptr,
                            const std::vector<std::vector<double>> &pts,
                            double min_edge_margin = 1,double max_edge_margin = 8.0)
-                           :WaypointsProcessor(valid_checker_ptr,collision_field_ptr, DM(pts), min_edge_margin, max_edge_margin) {
+                           :WaypointsProcessor(valid_checker_ptr,DM(pts), min_edge_margin, max_edge_margin) {
 
         }
 
@@ -137,17 +135,20 @@ namespace acsr {
         }
 
 
-        bool process() {
+        DM process(bool save_data=false) {
 
             DM points;
             std::vector<int> index_vec;
             std::tie(points,index_vec) = split();
-            points_history.push_back(points);
+            if(save_data)
+                points_history.push_back(points);
             auto total_waypoints = points.columns();
             auto M = m_*DM::eye(total_waypoints);
             for(auto i:index_vec){
                 M(i,i) = m_key_point_;
             }
+            M(0,0) = 1e10;
+            M(-1,-1)=1e10;
 
             for(auto idx = 0;idx<total_its;++idx){
 
@@ -157,7 +158,7 @@ namespace acsr {
                     pts.push_back({double(points(0,i)),double(points(1,i))});
                 }
 
-                std::vector<std::vector<double>> collision_force = collision_field_ptr_->get_force(pts,max_edge_margin_);
+                std::vector<std::vector<double>> collision_force = valid_checker_ptr_->get_force(pts,max_edge_margin_);
                 auto force_from_collision = DM(collision_force).T();
                 auto total_force = force_between_points+force_from_collision;
                 auto ax = DM::solve(M,total_force(0,Slice()).T());
@@ -166,8 +167,10 @@ namespace acsr {
                 //std::cout<<"a=\n"<<a<<std::endl;
                 //std::cout<<points.size();
                 points = points + step_size_ * a.T();
-                points_history.push_back(points);
+                if(save_data)
+                    points_history.push_back(points);
             }
+            return points;
 
         }
 
@@ -180,18 +183,18 @@ namespace acsr {
         std::vector<DM> points_history;
         const double step_size_ = 1;
         const double waypoint_hold_distance = 10.0;
-        const double k_distance =1.0;
+        const double k_distance_ =0.5;
         const double m_ = 10.0;
         const double m_key_point_ = 20.0;
         const double path_width_ = 8.0;
-        const int total_its = 100;
+        const int total_its = 200;
         const int steps = 10;
         double max_edge_margin_{};
         double min_edge_margin_{};
         DM waypoints_;
         //DM dist_vec_;
         std::shared_ptr<valid_checker_t> valid_checker_ptr_;
-        std::shared_ptr<collision_field_t> collision_field_ptr_;
+        //std::shared_ptr<collision_field_t> collision_field_ptr_;
         std::shared_ptr<Path> path_ptr_;
         std::shared_ptr<Path> original_path_ptr_;
 
@@ -228,10 +231,10 @@ namespace acsr {
 
 
             for(auto i=1;i<points.columns()-1;++i){
-                force(Slice(),i) = k_distance*(points(Slice(),i+1)-points(Slice(),i))+k_distance*(points(Slice(),i-1)-points(Slice(),i));
+                force(Slice(),i) = k_distance_*(points(Slice(),i+1)-points(Slice(),i))+k_distance_*(points(Slice(),i-1)-points(Slice(),i));
             }
-            force(Slice(),0) = k_distance*(points(Slice(),1)-points(Slice(),0));
-            force(Slice(),-1) = k_distance*(points(Slice(),-2)-points(Slice(),-1));
+            force(Slice(),0) = k_distance_*(points(Slice(),1)-points(Slice(),0));
+            force(Slice(),-1) = k_distance_*(points(Slice(),-2)-points(Slice(),-1));
             return force;
         }
 
