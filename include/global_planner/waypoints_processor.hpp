@@ -32,7 +32,7 @@ namespace acsr {
             }
             waypoints_ = pts;
             std::cout<<"Construct path from: \n"<<waypoints_<<std::endl;
-            original_path_ptr_=std::make_shared<Path>(pts,1);
+            original_path_ptr_=std::make_shared<Path>(pts,max_edge_margin);
         }
 
 
@@ -42,7 +42,7 @@ namespace acsr {
                            :WaypointsProcessor(valid_checker_ptr,DM(pts), min_edge_margin, max_edge_margin) {
 
         }
-
+/*
         std::tuple<bool,std::vector<std::vector<double>>> optimize(std::shared_ptr<Path> path_ptr, int resolution=100,double ds_holder = 0.5){
             auto s = DM::linspace(0,path_ptr->get_max_length(),resolution+1);
             s = s.T();
@@ -133,15 +133,22 @@ namespace acsr {
             new_pts.push_back({double(t(0,-1)),0});
             return std::tuple(true,new_pts);
         }
+*/
 
-
-        DM process(bool save_data=false) {
+        DM process(bool original_data = true) {
 
             DM points;
             std::vector<int> index_vec;
-            std::tie(points,index_vec) = split();
+            if(original_data) {
+                std::tie(points, index_vec) = split();
+            }else{
+                points = waypoints_;
+                index_vec.resize(waypoints_.columns());
+                std::iota(index_vec.begin(),index_vec.end(),0);
+            }
+            /*
             if(save_data)
-                points_history.push_back(points);
+                points_history.push_back(points);*/
             auto total_waypoints = points.columns();
             auto M = m_*DM::eye(total_waypoints);
             for(auto i:index_vec){
@@ -167,10 +174,19 @@ namespace acsr {
                 //std::cout<<"a=\n"<<a<<std::endl;
                 //std::cout<<points.size();
                 points = points + step_size_ * a.T();
-                if(save_data)
-                    points_history.push_back(points);
+                /*if(save_data)
+                    points_history.push_back(points);*/
             }
             return points;
+            /*
+            DM v = points(Slice(),Slice(0,index_vec[1]));
+            std::cout<<"Size: "<<points.rows()<<'\t'<<points.columns()<<std::endl;
+            for(auto i =1;i<index_vec.size()-1;++i){
+                v=DM::horzcat({v,points(Slice(),index_vec[i])});
+            }
+            v=DM::horzcat({v,points(Slice(),Slice(index_vec.back(),points.columns()))});
+            std::cout<<"Size: "<<v.rows()<<'\t'<<v.columns()<<std::endl;
+            return v;*/
 
         }
 
@@ -182,16 +198,16 @@ namespace acsr {
     private:
         std::vector<DM> points_history;
         const double step_size_ = 1;
-        const double waypoint_hold_distance = 10.0;
-        const double k_distance_ =0.5;
+        const double waypoint_hold_distance = 30;
+        const double k_distance_ =0.1;
         const double m_ = 10.0;
-        const double m_key_point_ = 20.0;
-        const double path_width_ = 8.0;
+        const double m_key_point_ = 10.0;
         const int total_its = 200;
-        const int steps = 10;
+        //const int steps = 10;
         double max_edge_margin_{};
         double min_edge_margin_{};
         DM waypoints_;
+
         //DM dist_vec_;
         std::shared_ptr<valid_checker_t> valid_checker_ptr_;
         //std::shared_ptr<collision_field_t> collision_field_ptr_;
@@ -208,7 +224,7 @@ namespace acsr {
             for(auto i=0;i<waypoints_.columns()-1;++i){
                 index_vec.push_back(dm.columns());
                 if(double(d(0,i))<=waypoint_hold_distance){
-                    dm = DM::horzcat({dm,waypoints_(0,i).T()});
+                    dm = DM::horzcat({dm,waypoints_(Slice(),i)});
                 }else{
                     auto segment = std::ceil(double(d(0,i))/waypoint_hold_distance)+1;
                     auto new_dm = DM::linspace(waypoints_(Slice(),i).T(),waypoints_(Slice(),i+1).T(),segment);

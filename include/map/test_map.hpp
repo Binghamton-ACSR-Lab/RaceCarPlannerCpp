@@ -52,7 +52,7 @@ namespace acsr{
         template<class T>
         std::vector<std::pair<double,T>> near_collides(double distance_holder,double x,double y){
             point_t pt{x,y};
-            std::vector<std::tuple<double,T>> result;
+            std::vector<std::pair<double,T>> result;
             //DistancePoint<point_t> distance_point{};
             //distance_point.distance = std::numeric_limits<double>::max();
             for(auto& s : shapes) {

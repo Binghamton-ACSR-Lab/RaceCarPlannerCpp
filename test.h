@@ -8,6 +8,11 @@
 #include <boost/geometry.hpp>
 #include <iostream>
 #include "utility"
+#include "test_map.hpp"
+#include "waypoints_processor.hpp"
+#include "global_planner_optimizer.hpp"
+
+using namespace acsr;
 
 void bgi_distance_test(){
     namespace bg = boost::geometry;
@@ -34,7 +39,152 @@ void bgi_distance_test(){
 }
 
 void make_planner_test(){
+    namespace plt = matplotlibcpp;
+    std::vector<std::vector<double>> pts;
+    auto map_file = std::string("../data/map/test_map.xml");
+    tinyxml2::XMLDocument doc;
+    doc.LoadFile( map_file.c_str());
+    auto root = doc.RootElement();
+    for (tinyxml2::XMLElement* element = root->FirstChildElement(); element != nullptr; element = element->NextSiblingElement())
+    {
+        if(strcmp(element->Name(),"waypoints")==0){
+            for (tinyxml2::XMLElement* child = element->FirstChildElement(); child != nullptr; child = child->NextSiblingElement()){
+                if(strcmp(child->Name(),"point")==0) {
+                    auto x = child->DoubleAttribute("x");
+                    auto y = child->DoubleAttribute("y");
+                    pts.push_back({x, y});
+                }
+            }
+        }
+    }
+    std::cout<<"Total points: "<<pts.size()<<std::endl;
 
+    auto test_map_ptr = std::make_shared<TestMap>(map_file);
+
+    double edge_margin = 10.0;
+    WaypointsProcessor<TestMap> processor(test_map_ptr,pts,1.0,edge_margin);
+
+    auto refined_waypoints = processor.process(true);
+    std::cout<<refined_waypoints<<std::endl;
+    std::shared_ptr<Path> path_ptr = std::make_shared<Path>(refined_waypoints,2*edge_margin);
+
+
+    std::string vehicle_file = "../data/params/racecar_nwh.yaml";
+    std::string front_tire_file = "../data/params/nwh_tire.yaml";
+    std::string rear_tire_file = "../data/params/nwh_tire.yaml";
+
+    if(!std::filesystem::exists(vehicle_file)){
+        std::cout<<vehicle_file<<" does not exist\n";
+        return;
+    }
+    if(!std::filesystem::exists(front_tire_file)){
+        std::cout<<front_tire_file<<" does not exist\n";
+        return;
+    }
+    if(!std::filesystem::exists(rear_tire_file)){
+        std::cout<<front_tire_file<<" does not exist\n";
+        return;
+    }
+
+    //load params
+    param_t vehicle_params,front_tire_params,rear_tire_params;
+
+    auto vehicle_yaml = YAML::LoadFile(vehicle_file);
+    std::cout<<"load vehicle config file.. Total node: "<<vehicle_yaml.size()<<std::endl;
+    for(auto it = vehicle_yaml.begin();it!=vehicle_yaml.end();++it){
+        vehicle_params[it->first.as<std::string>()]=it->second.as<double>();
+    }
+
+    auto front_tire_yaml = YAML::LoadFile(front_tire_file);
+    std::cout<<"load front tire config file.. Total node: "<<front_tire_yaml.size()<<std::endl;
+    for(auto it = front_tire_yaml.begin();it!=front_tire_yaml.end();++it){
+        front_tire_params[it->first.as<std::string>()]=it->second.as<double>();
+    }
+
+    if(front_tire_file==rear_tire_file){
+        rear_tire_params = front_tire_params;
+    }else {
+        auto rear_tire_yaml = YAML::LoadFile(rear_tire_file);
+        std::cout<<"load rear tire config file.. Total node: "<<rear_tire_yaml.size()<<std::endl;
+        for (auto it = rear_tire_yaml.begin(); it != rear_tire_yaml.end(); ++it) {
+            rear_tire_params[it->first.as<std::string>()] = it->second.as<double>();
+        }
+    }
+
+    BicycleDynamicsTwoBrakeOptimizer<TestMap> optimizer(path_ptr,vehicle_params,front_tire_params,rear_tire_params,150,test_map_ptr);
+    auto optimized_path = optimizer.make_plan();
+
+
+    plt::figure(1);
+    auto collision = test_map_ptr->plot_data();
+    for(auto& data:collision){
+        plt::plot(data.first,data.second,"k-");
+    }
+
+    DM original_waypoints = DM(pts).T();
+    auto original_x = original_waypoints(0,Slice());
+    auto original_y = original_waypoints(1,Slice());
+    plt::scatter(std::vector<double>(original_x->begin(),original_x->end()),std::vector<double>(original_y->begin(),original_y->end()),30.0,{{"c", "red"}, {"marker","*"}});
+
+    auto refined_x = refined_waypoints(0,Slice());
+    auto refined_y = refined_waypoints(1,Slice());
+    plt::scatter(std::vector<double>(refined_x->begin(),refined_x->end()),std::vector<double>(refined_y->begin(),refined_y->end()),30.0,{{"c", "blue"}, {"marker","o"}});
+
+    auto s = DM::linspace(0,path_ptr->get_max_length(),201).T();
+    auto t = path_ptr->s_to_t_lookup(s)[0];
+    auto n = DM::zeros(1,201);
+
+    auto path_xy = path_ptr->f_tn_to_xy(DMVector{t,n})[0];
+    auto path_x = path_xy(0,Slice());
+    auto path_y = path_xy(1,Slice());
+    plt::named_plot("path",std::vector<double>(path_x->begin(),path_x->end()),std::vector<double>(path_y->begin(),path_y->end()));
+
+    auto boundary_xy = optimizer.boundary_xy();
+    auto outer_x = boundary_xy.first(0,Slice());
+    auto outer_y = boundary_xy.first(1,Slice());
+    auto inner_x = boundary_xy.second(0,Slice());
+    auto inner_y = boundary_xy.second(1,Slice());
+    plt::named_plot("outer boundary",std::vector<double>(outer_x->begin(),outer_x->end()),std::vector<double>(outer_y->begin(),outer_y->end()));
+    plt::named_plot("inner boundary",std::vector<double>(inner_x->begin(),inner_x->end()),std::vector<double>(inner_y->begin(),inner_y->end()));
+
+
+    if(optimized_path.first){
+        auto x = std::get<1>(optimized_path.second);
+        auto dm_xy = path_ptr->f_tn_to_xy(std::vector<DM>{x(0,Slice()),x(1,Slice())})[0];
+        auto trajectory_x = dm_xy(0,Slice());
+        auto trajectory_y = dm_xy(1,Slice());
+        plt::named_plot("trajectory",std::vector<double>(trajectory_x->begin(),trajectory_x->end()),std::vector<double>(trajectory_y->begin(),trajectory_y->end()));
+        plt::legend();
+
+        plt::figure(2);
+        auto dt = std::get<0>(optimized_path.second);
+        auto vx = x(3,Slice(0,-1));
+        auto vy = x(4,Slice(0,-1));
+
+        std::vector<double> t(dt.columns());
+        t[0]=0;
+        std::partial_sum(dt->begin(),dt->end()-1,t.begin()+1);
+
+        plt::named_plot("vx",std::vector<double>(t.begin(),t.end()),std::vector<double>(vx->begin(),vx->end()));
+        plt::named_plot("vy",std::vector<double>(t.begin(),t.end()),std::vector<double>(vy->begin(),vy->end()));
+
+    }
+
+       /*
+    auto history_data = processor.get_history_data();
+    for(auto i=0;i<history_data.size();++i){
+        auto& dm = history_data[i];
+        auto x = dm(0,Slice());
+        auto y=dm(1,Slice());
+        if(i%99==0)
+            plt::named_plot(std::to_string(i),std::vector<double>(x->begin(),x->end()),std::vector<double>(y->begin(),y->end()));
+    }*/
+
+
+
+
+    plt::legend();
+    plt::show();
 }
 
 

@@ -23,6 +23,60 @@ namespace acsr{
     public:
         BicycleDynamicsTwoBrakeOptimizer() = default;
 
+        BicycleDynamicsTwoBrakeOptimizer(std::shared_ptr<Path> path_ptr,
+                                         const param_t & vehicle_params,
+                                         const param_t& front_tire_params,
+                                         const param_t& rear_tire_params,
+                                         int optimization_resolution = 100,
+                                         std::shared_ptr<valid_checker_t> valid_checker=nullptr)
+                :vehicle_params_(vehicle_params),front_tire_params_(front_tire_params),rear_tire_params_(rear_tire_params),N_(optimization_resolution){
+
+            path_ = path_ptr;
+            auto max_width = path_->get_width();
+            option_["max_iter"] = 100000;
+            option_["tol"]=1e-6;
+            option_["linear_solver"]="ma57";
+            if(std::is_void<valid_checker_t>::value || valid_checker== nullptr){
+                road_constraint_upper_bound_=DM{max_width/2};
+                road_constraint_lower_bound_=DM{-max_width/2};
+            }else{
+                std::vector<size_t> index_vect(N_+1);
+                std::iota(index_vect.begin(),index_vect.end(),0);
+
+                auto s = DM::linspace(0,path_->get_max_length(),N_+1);
+                s = s.T();
+                auto t = path_->s_to_t_lookup(s)[0];
+                auto n = DM::zeros(1,N_+1);
+                auto center_line = path_->f_tn_to_xy(DMVector {t,n})[0];
+
+                //DM boundary(N_+1);
+                //auto ones = DM::ones(1,4*steps+1);
+                //std::vector<double> outer_boundary_vec(resolution+1,-2*max_edge_margin_);
+                road_constraint_upper_bound_=path_->get_width()/2*DM::ones(1,N_+1);
+                road_constraint_lower_bound_=-path_->get_width()/2*DM::ones(1,N_+1);
+
+                std::for_each(std::execution::par,index_vect.begin(),index_vect.end(),[&](size_t idx){
+                    std::vector<std::pair<double,DM>> result = valid_checker->template near_collides<DM>(path_->get_width()/2,double(center_line(0,idx)),double(center_line(1,idx)));
+                    for(auto& r: result){
+                        auto n = path_->f_xy_to_tn(DMVector{r.second,t(0,idx)})[0](0);
+                        if(double(n(0))<0 && -r.first>double(road_constraint_lower_bound_(0,idx))){
+                            road_constraint_lower_bound_(0,idx)=-r.first;
+                        }else if(double(n(0))>0 && r.first<double(road_constraint_upper_bound_(0,idx))){
+                            road_constraint_upper_bound_(0,idx) = r.first;
+                        }
+                    }
+                });
+
+                if(path_->get_width()/2 - double(DM::mmin(road_constraint_upper_bound_))<0.1 && path_->get_width()/2 + double(DM::mmax(road_constraint_upper_bound_))<0.1){
+                    road_constraint_upper_bound_=DM{max_width/2};
+                    road_constraint_lower_bound_=DM{-max_width/2};
+                }
+
+            }
+
+        }
+
+
         BicycleDynamicsTwoBrakeOptimizer(const DM& waypoints,
                                          double max_width,
                                          const param_t & vehicle_params,
@@ -127,7 +181,7 @@ namespace acsr{
             //road_constraint_ = DM{max_width/2};
         }
 
-        void make_plan(double n0 =0, double v0=0.15,bool print = true){
+        std::pair<bool,std::tuple<DM,DM,DM>> make_plan(double n0 =0, double v0=0.15,bool print = true){
             auto all = Slice();
             auto _0_N = Slice(0,N_);
             auto _N_1 = Slice(1,N_+1);
@@ -224,10 +278,10 @@ namespace acsr{
 
 
 
-            //auto n_obj = MX::atan(5 * (n_sym_array * n_sym_array - (track_width / 2) *(track_width / 2))) + casadi::pi / 2;
+            auto n_obj = MX::atan(5 * (n_sym_array * n_sym_array - (track_width / 2) *(track_width / 2))) + casadi::pi / 2;
             //opti.minimize(MX::sum2(dt_sym_array) + MX::dot(n_obj, n_obj));
-            //opti.minimize(MX::sum2(dt_sym_array) + MX::dot(delta_dot_sym_array,delta_dot_sym_array) + 15.0*MX::dot(n_obj,n_obj));
-            opti.minimize(MX::sum2(dt_sym_array) + MX::dot(delta_dot_sym_array,delta_dot_sym_array));
+            opti.minimize(MX::sum2(dt_sym_array) + MX::dot(delta_dot_sym_array,delta_dot_sym_array) + 15.0*MX::dot(n_obj,n_obj));
+            //opti.minimize(MX::sum2(dt_sym_array) + MX::dot(delta_dot_sym_array,delta_dot_sym_array));
             //dynamics
             //opti.subject_to(X(all, Slice(1,N+1)) == X(all, _N_1) + X_dot);
             opti.subject_to(X(0, _N_1) == X(0, _0_N) + dt_sym_array * (vx_sym_array * MX::cos(dphi_c_sym_array) - vy_sym_array * MX::sin(dphi_c_sym_array))/(tangent_vec_norm*(1-n_sym_array*kappa_array)));
@@ -242,7 +296,7 @@ namespace acsr{
             opti.subject_to(X(0, all) == tau_array);
             opti.subject_to(X(all, 0) == X0);
             opti.subject_to(dt_sym_array >0);
-
+            opti.subject_to(X(IDX_X_vx, all) >0);
             //state boundary
             opti.subject_to(opti.bounded(delta_min, X(IDX_X_delta,all), delta_max));
             opti.subject_to(opti.bounded(road_constraint_lower_bound_,X(IDX_X_n,all),road_constraint_upper_bound_));
@@ -266,19 +320,34 @@ namespace acsr{
             opti.solver("ipopt", casadi_option, option_);
             try{
                 auto sol = opti.solve();
+                auto dt_array = sol.value(dt_sym_array);
+                auto sol_x = sol.value(X);
+                auto sol_u = sol.value(U);
                 if(save_to_database_){
-                    auto dt_array = sol.value(dt_sym_array);
-                    auto sol_x = sol.value(X);
-                    auto sol_u = sol.value(U);
                     save(dt_array,sol_x,sol_u);
                 }
+                return std::make_pair(true,std::make_tuple(dt_array,sol_x,sol_u));
             }
             catch (CasadiException& e){
                 std::cout<<e.what()<<std::endl;
                 std::cout<<"Solve Optimal Problem Fails\n";
-                return;
+                return std::make_pair(false,std::make_tuple(DM{},DM{},DM{}));;
             }
 
+        }
+
+        std::pair<DM,DM> boundary_xy(){
+            auto s = DM::linspace(0,path_->get_max_length(),N_+1);
+            s = s.T();
+            auto t = path_->s_to_t_lookup(s)[0];
+            //auto n = DM::zeros(1,N_+1);
+            auto outer_line = path_->f_tn_to_xy(DMVector {t,road_constraint_lower_bound_})[0];
+            auto inner_line = path_->f_tn_to_xy(DMVector {t,road_constraint_upper_bound_})[0];
+            return std::make_pair(outer_line,inner_line);
+        }
+
+        std::pair<DM,DM> boundary_n(){
+            return std::make_pair(road_constraint_lower_bound_,road_constraint_upper_bound_);
         }
 
 
@@ -291,9 +360,7 @@ namespace acsr{
             datatable_name_ = table_name;
         }
 
-        void set_road_boundary(DM& boundary){
-            road_constraint_ = boundary;
-        }
+
 
         /*
         void plot_trajectory(const std::shared_ptr<Track>& plot_track = nullptr,const std::string& table_name=std::string()){
@@ -604,7 +671,7 @@ namespace acsr{
             }
 
             path_ = std::make_shared<Path>(waypoints,max_width);
-            option["max_iter"] = 600000;
+            option["max_iter"] = 10000;
             option["tol"]=1e-6;
             option["linear_solver"]="ma57";
             //option["print_level"]=5;

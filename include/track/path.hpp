@@ -86,7 +86,8 @@ namespace acsr {
             //phi_rot_mat_vector(1,0) = -MX::sin(phi);
             //phi_rot_mat_vector(1,1) = MX::cos(phi);
 
-            MX dm_xy;
+            //MX dm_xy;
+            auto dm_xy = MX::sym("dm_xy");
             auto dm_n = -MX::sin(phi)*(dm_xy-pt_t_mx)(0) + MX::cos(phi)*(dm_xy-pt_t_mx)(1);
             //auto tn = MX::mtimes(phi_rot_mat_vector,dm_xy-pt_t_mx);
             f_xy_to_tn = casadi::Function("xy_to_tn",{dm_xy,t},{dm_n});

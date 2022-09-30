@@ -11,7 +11,7 @@
 #include <execution>
 #include "path.hpp"
 #include "test_map.hpp"
-#include "path_preprocessor.hpp"
+
 
 #include "test.h"
 #include "waypoints_processor.hpp"
@@ -59,7 +59,7 @@ void waypoint_process_test(){
 
 
     WaypointsProcessor<TestMap> processor(test_map_ptr,pts);
-    processor.process(true);
+    processor.process(false);
     auto collision = test_map_ptr->plot_data();
     for(auto& data:collision){
         plt::plot(data.first,data.second,"k-");
@@ -121,31 +121,7 @@ void track_test(){
 
 }
 
-void path_preprocessor_test(){
-    std::vector<std::vector<double>> pts;
-    auto filename = std::string("../data/map/test_map.xml");
-    tinyxml2::XMLDocument doc;
-    doc.LoadFile( filename.c_str());
-    auto root = doc.RootElement();
-    for (tinyxml2::XMLElement* element = root->FirstChildElement(); element != nullptr; element = element->NextSiblingElement())
-    {
-        if(strcmp(element->Name(),"waypoints")==0){
-            for (tinyxml2::XMLElement* child = element->FirstChildElement(); child != nullptr; child = child->NextSiblingElement()){
-                if(strcmp(child->Name(),"point")==0) {
-                    auto x = child->DoubleAttribute("x");
-                    auto y = child->DoubleAttribute("y");
-                    pts.push_back({x, y});
-                }
-            }
-        }
-    }
-    std::cout<<"Total points: "<<pts.size()<<std::endl;
 
-    auto test_map_ptr = std::make_shared<TestMap>(filename);
-    PathPreprocessor<TestMap> preprocessor(test_map_ptr,pts);
-    preprocessor.process();
-
-}
 using namespace std;
 int main(int argc, char **argv) {
     DM aa{1,2},bb{3,4};
@@ -160,6 +136,7 @@ int main(int argc, char **argv) {
     std::cout<<DM::mtimes(dm_a,aa)<<endl;
     std::cout<<DM::mmax(dm_a);
 
+    make_planner_test();
     //waypoint_process_test();
 
     //path_preprocessor_test();
