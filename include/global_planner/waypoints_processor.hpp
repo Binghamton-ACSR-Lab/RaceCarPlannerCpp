@@ -115,18 +115,12 @@ namespace acsr {
 
 
     private:
-
-
         const double k_hooke_ =1.0;
         const double m_ = 10.0;
-        const double m_key_point_ = 10.0;
+        const double m_key_point_ = 20.0;
         const int total_its = 100;
-
-
         DM waypoints_;
         std::shared_ptr<valid_checker_t> valid_checker_ptr_;
-
-
 
 
         std::tuple<DM,std::vector<int>> split(int segment) {

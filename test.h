@@ -61,7 +61,7 @@ void make_planner_test(){
 
     auto test_map_ptr = std::make_shared<TestMap>(map_file);
 
-    double edge_margin = 8.0;
+    double edge_margin = 10.0;
     WaypointsProcessor<TestMap> processor(test_map_ptr,pts);
 
     auto refined_waypoints = processor.process();
