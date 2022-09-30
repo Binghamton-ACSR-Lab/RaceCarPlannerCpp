@@ -23,22 +23,23 @@ namespace acsr{
     public:
         BicycleDynamicsTwoBrakeOptimizer() = default;
 
-        BicycleDynamicsTwoBrakeOptimizer(std::shared_ptr<Path> path_ptr,
+        explicit BicycleDynamicsTwoBrakeOptimizer(std::shared_ptr<Path> path_ptr,
+                                         double path_width,
                                          const param_t & vehicle_params,
-                                         const param_t& front_tire_params,
-                                         const param_t& rear_tire_params,
+                                         const param_t & front_tire_params,
+                                         const param_t & rear_tire_params,
                                          int optimization_resolution = 100,
                                          std::shared_ptr<valid_checker_t> valid_checker=nullptr)
-                :vehicle_params_(vehicle_params),front_tire_params_(front_tire_params),rear_tire_params_(rear_tire_params),N_(optimization_resolution){
+                :vehicle_params_(vehicle_params),path_width_(path_width),front_tire_params_(front_tire_params),rear_tire_params_(rear_tire_params),N_(optimization_resolution){
 
             path_ = path_ptr;
-            auto max_width = path_->get_width();
+            //auto max_width = path_->get_width();
             option_["max_iter"] = 100000;
             option_["tol"]=1e-6;
             option_["linear_solver"]="ma57";
             if(std::is_void<valid_checker_t>::value || valid_checker== nullptr){
-                road_constraint_upper_bound_=DM{max_width/2};
-                road_constraint_lower_bound_=DM{-max_width/2};
+                road_constraint_upper_bound_=DM{path_width/2};
+                road_constraint_lower_bound_=DM{-path_width/2};
             }else{
                 std::vector<size_t> index_vect(N_+1);
                 std::iota(index_vect.begin(),index_vect.end(),0);
@@ -52,11 +53,11 @@ namespace acsr{
                 //DM boundary(N_+1);
                 //auto ones = DM::ones(1,4*steps+1);
                 //std::vector<double> outer_boundary_vec(resolution+1,-2*max_edge_margin_);
-                road_constraint_upper_bound_=path_->get_width()/2*DM::ones(1,N_+1);
-                road_constraint_lower_bound_=-path_->get_width()/2*DM::ones(1,N_+1);
+                road_constraint_upper_bound_=path_width/2*DM::ones(1,N_+1);
+                road_constraint_lower_bound_=-path_width/2*DM::ones(1,N_+1);
 
                 std::for_each(std::execution::par,index_vect.begin(),index_vect.end(),[&](size_t idx){
-                    std::vector<std::pair<double,DM>> result = valid_checker->template near_collides<DM>(path_->get_width()/2,double(center_line(0,idx)),double(center_line(1,idx)));
+                    std::vector<std::pair<double,DM>> result = valid_checker->template near_collides<DM>(path_width/2,double(center_line(0,idx)),double(center_line(1,idx)));
                     for(auto& r: result){
                         auto n = path_->f_xy_to_tn(DMVector{r.second,t(0,idx)})[0](0);
                         if(double(n(0))<0 && -r.first>double(road_constraint_lower_bound_(0,idx))){
@@ -67,118 +68,13 @@ namespace acsr{
                     }
                 });
 
-                if(path_->get_width()/2 - double(DM::mmin(road_constraint_upper_bound_))<0.1 && path_->get_width()/2 + double(DM::mmax(road_constraint_upper_bound_))<0.1){
-                    road_constraint_upper_bound_=DM{max_width/2};
-                    road_constraint_lower_bound_=DM{-max_width/2};
+                if(path_width/2 - double(DM::mmin(road_constraint_upper_bound_))<0.1 && path_width/2 + double(DM::mmax(road_constraint_upper_bound_))<0.1){
+                    road_constraint_upper_bound_=DM{path_width/2};
+                    road_constraint_lower_bound_=DM{-path_width/2};
                 }
 
             }
 
-        }
-
-
-        BicycleDynamicsTwoBrakeOptimizer(const DM& waypoints,
-                                         double max_width,
-                                         const param_t & vehicle_params,
-                                         const param_t& front_tire_params,
-                                         const param_t& rear_tire_params,
-                                         int optimization_resolution = 100,
-                                         std::shared_ptr<valid_checker_t> valid_checker=nullptr)
-            :vehicle_params_(vehicle_params),front_tire_params_(front_tire_params),rear_tire_params_(rear_tire_params),N_(optimization_resolution){
-
-            path_ = std::make_shared<Path>(waypoints,max_width);
-            option_["max_iter"] = 600000;
-            option_["tol"]=1e-6;
-            option_["linear_solver"]="ma57";
-            if(std::is_void<valid_checker_t>::value || valid_checker== nullptr){
-                road_constraint_upper_bound_=DM{max_width/2};
-                road_constraint_lower_bound_=DM{-max_width/2};
-            }else{
-                std::vector<size_t> index_vect(N_+1);
-                std::iota(index_vect.begin(),index_vect.end(),0);
-
-                auto s = DM::linspace(0,path_->get_max_length(),N_+1);
-                s = s.T();
-                auto t = path_->s_to_t_lookup(s)[0];
-                auto n = DM::zeros(1,N_+1);
-                auto center_line = path_->f_tn_to_xy(DMVector {t,n})[0];
-
-                //DM boundary(N_+1);
-                //auto ones = DM::ones(1,4*steps+1);
-                //std::vector<double> outer_boundary_vec(resolution+1,-2*max_edge_margin_);
-                road_constraint_upper_bound_=path_->get_width()/2*DM::ones(1,N_+1);
-                road_constraint_lower_bound_=-path_->get_width()/2*DM::ones(1,N_+1);
-
-                std::for_each(std::execution::par,index_vect.begin(),index_vect.end(),[&](size_t idx){
-                    std::vector<std::pair<double,DM>> result = valid_checker->near_collides(path_->get_width()/2,double(center_line(0,idx)),double(center_line(1,idx)));
-                    for(auto& r: result){
-                        auto n = path_->f_xy_to_tn(DMVector{r.second,t(0,idx)})[0](0);
-                        if(double(n(0))<0 && -r.first>double(road_constraint_lower_bound_(0,idx))){
-                            road_constraint_lower_bound_(0,idx)=-r.first;
-                        }else if(double(n(0))>0 && r.first<double(road_constraint_upper_bound_(0,idx))){
-                            road_constraint_upper_bound_(0,idx) = r.first;
-                        }
-                    }
-                });
-
-                if(path_->get_width()/2 - double(DM::mmin(road_constraint_upper_bound_))<0.1 && path_->get_width()/2 + double(DM::mmax(road_constraint_upper_bound_))<0.1){
-                    road_constraint_upper_bound_=DM{max_width/2};
-                    road_constraint_lower_bound_=DM{-max_width/2};
-                }
-
-            }
-
-        }
-
-        BicycleDynamicsTwoBrakeOptimizer(const DM& waypoints,
-                                         double max_width,
-                                         const std::string& vehicle_file,
-                                         const std::string& front_tire_file,
-                                         const std::string& rear_tire_file,
-                                         int optimization_resolution = 100,
-                                         std::shared_ptr<valid_checker_t> valid_checker=nullptr):N_(optimization_resolution){
-            if(!std::filesystem::exists(vehicle_file)){
-                std::cout<<vehicle_file<<" does not exist\n";
-                return;
-            }
-            if(!std::filesystem::exists(front_tire_file)){
-                std::cout<<front_tire_file<<" does not exist\n";
-                return;
-            }
-            if(!std::filesystem::exists(rear_tire_file)){
-                std::cout<<front_tire_file<<" does not exist\n";
-                return;
-            }
-
-            //load params
-            auto vehicle_yaml = YAML::LoadFile(vehicle_file);
-            std::cout<<"load vehicle config file.. Total node: "<<vehicle_yaml.size()<<std::endl;
-            for(auto it = vehicle_yaml.begin();it!=vehicle_yaml.end();++it){
-                vehicle_params_[it->first.as<std::string>()]=it->second.as<double>();
-            }
-
-            auto front_tire_yaml = YAML::LoadFile(front_tire_file);
-            std::cout<<"load front tire config file.. Total node: "<<front_tire_yaml.size()<<std::endl;
-            for(auto it = front_tire_yaml.begin();it!=front_tire_yaml.end();++it){
-                front_tire_params_[it->first.as<std::string>()]=it->second.as<double>();
-            }
-
-            if(front_tire_file.compare(rear_tire_file)==0){
-                rear_tire_params_ = front_tire_params_;
-            }else {
-                auto rear_tire_yaml = YAML::LoadFile(rear_tire_file);
-                std::cout<<"load rear tire config file.. Total node: "<<rear_tire_yaml.size()<<std::endl;
-                for (auto it = rear_tire_yaml.begin(); it != rear_tire_yaml.end(); ++it) {
-                    rear_tire_params_[it->first.as<std::string>()] = it->second.as<double>();
-                }
-            }
-
-            path_ = std::make_shared<Path>(waypoints,max_width);
-            option_["max_iter"] = 600000;
-            option_["tol"]=1e-6;
-            option_["linear_solver"]="ma57";
-
-            //road_constraint_ = DM{max_width/2};
         }
 
         std::pair<bool,std::tuple<DM,DM,DM>> make_plan(double n0 =0, double v0=0.15,bool print = true){
@@ -208,7 +104,7 @@ namespace acsr{
             const auto Iz = vehicle_params_.at("Iz");
             const auto Fz = casadi::DM::ones(2) * vehicle_params_.at("m") / 2 * 9.81;
 
-            const auto track_width = path_->get_width();
+            //const auto track_width = path_->get_width();
             const auto delta_min = vehicle_params_.at("delta_min");
             const auto delta_max = vehicle_params_.at("delta_max");
             const auto delta_dot_min = vehicle_params_.at("delta_dot_min");
@@ -278,7 +174,7 @@ namespace acsr{
 
 
 
-            auto n_obj = MX::atan(5 * (n_sym_array * n_sym_array - (track_width / 2) *(track_width / 2))) + casadi::pi / 2;
+            auto n_obj = MX::atan(5 * (n_sym_array * n_sym_array - (path_width_ / 2) *(path_width_ / 2))) + casadi::pi / 2;
             //opti.minimize(MX::sum2(dt_sym_array) + MX::dot(n_obj, n_obj));
             opti.minimize(MX::sum2(dt_sym_array) + MX::dot(delta_dot_sym_array,delta_dot_sym_array) + 15.0*MX::dot(n_obj,n_obj));
             //opti.minimize(MX::sum2(dt_sym_array) + MX::dot(delta_dot_sym_array,delta_dot_sym_array));
@@ -350,8 +246,6 @@ namespace acsr{
             return std::make_pair(road_constraint_lower_bound_,road_constraint_upper_bound_);
         }
 
-
-
         void set_database_file(const std::string& file_name){
             database_file_ =  file_name;
         }
@@ -359,7 +253,6 @@ namespace acsr{
         void set_datatable_name(const std::string& table_name){
             datatable_name_ = table_name;
         }
-
 
 
         /*
@@ -484,6 +377,7 @@ namespace acsr{
 
     private:
         std::shared_ptr<Path> path_;
+        double path_width_;
         param_t vehicle_params_,front_tire_params_,rear_tire_params_,track_params_;
         std::string database_file_ ="../output/global_planner.db";
         std::string datatable_name_ = std::string();
@@ -492,6 +386,7 @@ namespace acsr{
         bool save_to_database_=false;
         DM road_constraint_upper_bound_,road_constraint_lower_bound_;
         const int N_;
+
         //std::shared_ptr<valid_checker_t> valid_checker_;
 
         constexpr static int nx = 7;
@@ -630,6 +525,7 @@ namespace acsr{
 
     };
 
+    /*
     class BicycleDynamicsOneBrakeOptimizer{
     public:
         BicycleDynamicsOneBrakeOptimizer() = default;
@@ -670,7 +566,7 @@ namespace acsr{
                 }
             }
 
-            path_ = std::make_shared<Path>(waypoints,max_width);
+            path_ = std::make_shared<Path>(waypoints);
             option["max_iter"] = 10000;
             option["tol"]=1e-6;
             option["linear_solver"]="ma57";
@@ -985,7 +881,7 @@ namespace acsr{
 
         }
 
-    };
+    };*/
 }
 
 #endif //RACECARPLANNER_GLOBAL_PLANNER_OPTIMIZER_HPP

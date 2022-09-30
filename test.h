@@ -61,12 +61,12 @@ void make_planner_test(){
 
     auto test_map_ptr = std::make_shared<TestMap>(map_file);
 
-    double edge_margin = 10.0;
-    WaypointsProcessor<TestMap> processor(test_map_ptr,pts,1.0,edge_margin);
+    double edge_margin = 8.0;
+    WaypointsProcessor<TestMap> processor(test_map_ptr,pts);
 
-    auto refined_waypoints = processor.process(true);
+    auto refined_waypoints = processor.process();
     std::cout<<refined_waypoints<<std::endl;
-    std::shared_ptr<Path> path_ptr = std::make_shared<Path>(refined_waypoints,2*edge_margin);
+    std::shared_ptr<Path> path_ptr = std::make_shared<Path>(refined_waypoints);
 
 
     std::string vehicle_file = "../data/params/racecar_nwh.yaml";
@@ -111,7 +111,7 @@ void make_planner_test(){
         }
     }
 
-    BicycleDynamicsTwoBrakeOptimizer<TestMap> optimizer(path_ptr,vehicle_params,front_tire_params,rear_tire_params,150,test_map_ptr);
+    BicycleDynamicsTwoBrakeOptimizer<TestMap> optimizer(path_ptr,2*edge_margin,vehicle_params,front_tire_params,rear_tire_params,150,test_map_ptr);
     auto optimized_path = optimizer.make_plan();
 
 

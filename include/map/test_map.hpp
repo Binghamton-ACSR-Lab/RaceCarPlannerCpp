@@ -80,8 +80,36 @@ namespace acsr{
                         auto dx = (pt.get<0>() - dist_poly.projected_point.get<0>()) / dist_poly.distance;
                         auto dy = (pt.get<1>() - dist_poly.projected_point.get<1>()) / dist_poly.distance;
                         auto k = force_ratio/(dist_poly.distance*dist_poly.distance);
+                        if(bg::within(point_t {pt.get<0>(),pt.get<1>()},s))
+                            k=-k;
                         force = T{force[0] + k * dx, force[1] +k*dy};
                     }
+                }
+                result.push_back(force);
+
+            }
+            return result;
+        }
+
+        template<class T>
+        std::vector<T> get_force(std::vector<T> const& vec){
+
+            std::vector<T> result;
+            for(auto i=0;i<vec.size();++i){
+                point_t pt{vec[i][0],vec[i][1]};
+                T force{0,0};
+
+                for(auto& s : shapes) {
+                    auto dist_poly = point_to_polygon(pt, s);
+
+                    //if (dist_poly.distance < max_edge_margin) {
+                    auto dx = (pt.get<0>() - dist_poly.projected_point.get<0>()) / dist_poly.distance;
+                    auto dy = (pt.get<1>() - dist_poly.projected_point.get<1>()) / dist_poly.distance;
+                    auto k = force_ratio/(dist_poly.distance*dist_poly.distance);
+                    if(bg::within(point_t {pt.get<0>(),pt.get<1>()},s))
+                        k=-k;
+                    force = T{force[0] + k * dx, force[1] +k*dy};
+                    //}
                 }
                 result.push_back(force);
 
