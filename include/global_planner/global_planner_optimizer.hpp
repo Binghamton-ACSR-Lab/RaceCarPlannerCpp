@@ -30,13 +30,13 @@ namespace acsr{
                                          const param_t & rear_tire_params,
                                          int optimization_resolution = 100,
                                          std::shared_ptr<valid_checker_t> valid_checker=nullptr)
-                :vehicle_params_(vehicle_params),path_width_(path_width),front_tire_params_(front_tire_params),rear_tire_params_(rear_tire_params),N_(optimization_resolution){
+                :vehicle_params_(vehicle_params),path_width_(path_width),front_tire_params_(front_tire_params),rear_tire_params_(rear_tire_params),N_(optimization_resolution),path_(path_ptr){
 
-            path_ = path_ptr;
-            //auto max_width = path_->get_width();
-            option_["max_iter"] = 100000;
+            option_["max_iter"] = 30000;
             option_["tol"]=1e-6;
             option_["linear_solver"]="ma57";
+
+
             if(std::is_void<valid_checker_t>::value || valid_checker== nullptr){
                 road_constraint_upper_bound_=DM{path_width/2};
                 road_constraint_lower_bound_=DM{-path_width/2};
@@ -50,9 +50,6 @@ namespace acsr{
                 auto n = DM::zeros(1,N_+1);
                 auto center_line = path_->f_tn_to_xy(DMVector {t,n})[0];
 
-                //DM boundary(N_+1);
-                //auto ones = DM::ones(1,4*steps+1);
-                //std::vector<double> outer_boundary_vec(resolution+1,-2*max_edge_margin_);
                 road_constraint_upper_bound_=path_width/2*DM::ones(1,N_+1);
                 road_constraint_lower_bound_=-path_width/2*DM::ones(1,N_+1);
 
@@ -174,10 +171,14 @@ namespace acsr{
 
 
 
-            auto n_obj = MX::atan(5 * (n_sym_array * n_sym_array - (path_width_ / 2) *(path_width_ / 2))) + casadi::pi / 2;
+            auto n_low_obj = MX::exp(MX(road_constraint_lower_bound_)-X(IDX_X_n,all));
+            auto n_upper_obj = MX::exp(X(IDX_X_n,all)-MX(road_constraint_upper_bound_));
+
+            //auto n_obj = MX::atan(5 * (n_sym_array * n_sym_array - (path_width_ / 2) *(path_width_ / 2))) + casadi::pi / 2;
             //opti.minimize(MX::sum2(dt_sym_array) + MX::dot(n_obj, n_obj));
-            opti.minimize(MX::sum2(dt_sym_array) + MX::dot(delta_dot_sym_array,delta_dot_sym_array) + 15.0*MX::dot(n_obj,n_obj));
+            //opti.minimize(MX::sum2(dt_sym_array) + MX::dot(delta_dot_sym_array,delta_dot_sym_array) + 15.0*MX::dot(n_obj,n_obj));
             //opti.minimize(MX::sum2(dt_sym_array) + MX::dot(delta_dot_sym_array,delta_dot_sym_array));
+            opti.minimize(10*MX::sum2(dt_sym_array) + 10*MX::dot(delta_dot_sym_array,delta_dot_sym_array) + MX::sum2(n_low_obj) + MX::sum2(n_upper_obj));
             //dynamics
             //opti.subject_to(X(all, Slice(1,N+1)) == X(all, _N_1) + X_dot);
             opti.subject_to(X(0, _N_1) == X(0, _0_N) + dt_sym_array * (vx_sym_array * MX::cos(dphi_c_sym_array) - vy_sym_array * MX::sin(dphi_c_sym_array))/(tangent_vec_norm*(1-n_sym_array*kappa_array)));
@@ -195,7 +196,7 @@ namespace acsr{
             opti.subject_to(X(IDX_X_vx, all) >0);
             //state boundary
             opti.subject_to(opti.bounded(delta_min, X(IDX_X_delta,all), delta_max));
-            opti.subject_to(opti.bounded(road_constraint_lower_bound_,X(IDX_X_n,all),road_constraint_upper_bound_));
+            //opti.subject_to(opti.bounded(road_constraint_lower_bound_,X(IDX_X_n,all),road_constraint_upper_bound_));
             //opti.subject_to(opti.bounded(delta_min, delta_sym_array, delta_max));
             //opti.subject_to(opti.bounded(-track_width/2,n_sym_array,track_width/2));
             //control boundary
@@ -377,7 +378,7 @@ namespace acsr{
 
     private:
         std::shared_ptr<Path> path_;
-        double path_width_;
+        double path_width_{};
         param_t vehicle_params_,front_tire_params_,rear_tire_params_,track_params_;
         std::string database_file_ ="../output/global_planner.db";
         std::string datatable_name_ = std::string();
@@ -385,7 +386,7 @@ namespace acsr{
         Dict option_;
         bool save_to_database_=false;
         DM road_constraint_upper_bound_,road_constraint_lower_bound_;
-        const int N_;
+        const int N_{};
 
         //std::shared_ptr<valid_checker_t> valid_checker_;
 

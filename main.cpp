@@ -131,11 +131,13 @@ int main(int argc, char **argv) {
     auto dm_a = DM(a);
     auto dm_b = DM(b);
 
+    std::cout<<exp(aa)<<std::endl;
+
     DM c{11.0};
     std::cout<<dm_a-c<<endl;
     std::cout<<DM::mtimes(dm_a,aa)<<endl;
     std::cout<<DM::mmax(dm_a);
-
+    std::cout<<c/aa<<std::endl;
     make_planner_test();
     //waypoint_process_test();
 

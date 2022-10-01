@@ -40,6 +40,8 @@ void bgi_distance_test(){
 
 void make_planner_test(){
     namespace plt = matplotlibcpp;
+
+    //read the waypoints
     std::vector<std::vector<double>> pts;
     auto map_file = std::string("../data/map/test_map.xml");
     tinyxml2::XMLDocument doc;
@@ -59,16 +61,24 @@ void make_planner_test(){
     }
     std::cout<<"Total points: "<<pts.size()<<std::endl;
 
+    //create the map, this map is used as valid_checker.
     auto test_map_ptr = std::make_shared<TestMap>(map_file);
 
     double edge_margin = 10.0;
+
+    // create the waypoint processor, used to smoothing waypoints
+    //template valid_checker_t has to be implemented two functions:
+    // bool valid(x,y) & std::vector<T> get_force(std::vector<T> const& vec)
     WaypointsProcessor<TestMap> processor(test_map_ptr,pts);
 
+    //get the smoothed waypoints
     auto refined_waypoints = processor.process();
     std::cout<<refined_waypoints<<std::endl;
+
+    //create a spline path going through those smoothed waypoints
     std::shared_ptr<Path> path_ptr = std::make_shared<Path>(refined_waypoints);
 
-
+    //load params
     std::string vehicle_file = "../data/params/racecar_nwh.yaml";
     std::string front_tire_file = "../data/params/nwh_tire.yaml";
     std::string rear_tire_file = "../data/params/nwh_tire.yaml";
@@ -85,22 +95,17 @@ void make_planner_test(){
         std::cout<<front_tire_file<<" does not exist\n";
         return;
     }
-
-    //load params
     param_t vehicle_params,front_tire_params,rear_tire_params;
-
     auto vehicle_yaml = YAML::LoadFile(vehicle_file);
     std::cout<<"load vehicle config file.. Total node: "<<vehicle_yaml.size()<<std::endl;
     for(auto it = vehicle_yaml.begin();it!=vehicle_yaml.end();++it){
         vehicle_params[it->first.as<std::string>()]=it->second.as<double>();
     }
-
     auto front_tire_yaml = YAML::LoadFile(front_tire_file);
     std::cout<<"load front tire config file.. Total node: "<<front_tire_yaml.size()<<std::endl;
     for(auto it = front_tire_yaml.begin();it!=front_tire_yaml.end();++it){
         front_tire_params[it->first.as<std::string>()]=it->second.as<double>();
     }
-
     if(front_tire_file==rear_tire_file){
         rear_tire_params = front_tire_params;
     }else {
@@ -111,10 +116,12 @@ void make_planner_test(){
         }
     }
 
+    //create the global planner optimizer
     BicycleDynamicsTwoBrakeOptimizer<TestMap> optimizer(path_ptr,2*edge_margin,vehicle_params,front_tire_params,rear_tire_params,150,test_map_ptr);
+    //get the trajectory
     auto optimized_path = optimizer.make_plan();
 
-
+    //plot
     plt::figure(1);
     auto collision = test_map_ptr->plot_data();
     for(auto& data:collision){
@@ -169,19 +176,6 @@ void make_planner_test(){
         plt::named_plot("vy",std::vector<double>(t.begin(),t.end()),std::vector<double>(vy->begin(),vy->end()));
 
     }
-
-       /*
-    auto history_data = processor.get_history_data();
-    for(auto i=0;i<history_data.size();++i){
-        auto& dm = history_data[i];
-        auto x = dm(0,Slice());
-        auto y=dm(1,Slice());
-        if(i%99==0)
-            plt::named_plot(std::to_string(i),std::vector<double>(x->begin(),x->end()),std::vector<double>(y->begin(),y->end()));
-    }*/
-
-
-
 
     plt::legend();
     plt::show();
