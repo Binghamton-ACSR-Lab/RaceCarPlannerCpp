@@ -171,8 +171,10 @@ namespace acsr{
 
 
 
-            auto n_low_obj = MX::exp(MX(road_constraint_lower_bound_)-X(IDX_X_n,all));
-            auto n_upper_obj = MX::exp(X(IDX_X_n,all)-MX(road_constraint_upper_bound_));
+            //auto n_low_obj = MX::exp(MX(road_constraint_lower_bound_)-X(IDX_X_n,all));
+            //auto n_upper_obj = MX::exp(X(IDX_X_n,all)-MX(road_constraint_upper_bound_));
+            auto n_low_obj = MX::atan(10*(MX(road_constraint_lower_bound_)-X(IDX_X_n,all)));
+            auto n_upper_obj = MX::atan(10*(X(IDX_X_n,all)-MX(road_constraint_upper_bound_)));
 
             //auto n_obj = MX::atan(5 * (n_sym_array * n_sym_array - (path_width_ / 2) *(path_width_ / 2))) + casadi::pi / 2;
             //opti.minimize(MX::sum2(dt_sym_array) + MX::dot(n_obj, n_obj));
