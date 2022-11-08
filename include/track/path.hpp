@@ -23,7 +23,7 @@ namespace acsr {
     public:
         Path() = delete;
 
-        explicit Path(DM pts) {
+        explicit Path(DM pts,bool closed=false) {
             waypoints_=pts;
             if(waypoints_.rows()!=2){
                 assert(pts.columns()==2);
@@ -33,9 +33,9 @@ namespace acsr {
             }
 
             f_xy = get_parametric_function(waypoints_);
-            t_max = waypoints_.columns()-1;
+            t_max = waypoints_.columns()-(closed?0:1);
 
-            int resolution = 100;
+
             auto ts = casadi::DM::linspace(0, t_max, resolution * t_max);
             auto ts_vec = std::vector<double>(ts->begin(),ts->end());
 
@@ -174,23 +174,29 @@ namespace acsr {
         double t_max;
         double s_max;
 
+        const int resolution = 100;
+
         //casadi::DM center_line;
         //casadi::DM inner_line;
         //casadi::DM outer_line;
         //RTree search_tree;
 
 
-        static casadi::Function get_parametric_function(const casadi::DM& waypoints){
+        static casadi::Function get_parametric_function(const casadi::DM& waypoints,bool closed= false){
 
             assert(waypoints.rows()==2);
             auto t = casadi::MX::sym("t");
-
-            std::vector<double> tau_vec(waypoints.columns());
             auto dm_x = waypoints(0,Slice());
             auto dm_y = waypoints(1,Slice());
-            auto x = std::vector<double>{dm_x->begin(),dm_x->end()};
-            auto y = std::vector<double>{dm_y->begin(),dm_y->end()};
+            auto size = waypoints.columns()+(closed?1:0);
+            std::vector<double> tau_vec(size),x(size),y(size);
             std::generate(tau_vec.begin(), tau_vec.end(), [i = 0]() mutable {return i++;});
+            std::copy(dm_x->begin(),dm_x->end(),x.begin());
+            std::copy(dm_y->begin(),dm_y->end(),y.begin());
+            if(closed){
+                x.back() = x.front();
+                y.back() = y.front();
+            }
 
             auto fx =casadi::interpolant("f_x","bspline",std::vector<std::vector<double>>{tau_vec},x);
             auto fy = casadi::interpolant("f_y","bspline",std::vector<std::vector<double>>{tau_vec},y);

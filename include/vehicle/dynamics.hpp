@@ -80,7 +80,6 @@ namespace acsr{
 
     template<class front_tire_model_t,class rear_tire_model_t>
     class BicycleDynamicsByParametricArc{
-
     public:
         BicycleDynamicsByParametricArc()=default;
         BicycleDynamicsByParametricArc(const param_t& param,std::shared_ptr<Track> track,std::shared_ptr<front_tire_model_t> front_tire_model,std::shared_ptr<rear_tire_model_t> rear_tire_model)

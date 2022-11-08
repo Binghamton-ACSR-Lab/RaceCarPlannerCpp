@@ -64,7 +64,7 @@ void make_planner_test(){
     //create the map, this map is used as valid_checker.
     auto test_map_ptr = std::make_shared<TestMap>(map_file);
 
-    double edge_margin = 14.0;
+    double edge_margin = 13.0;
 
     // create the waypoint processor, used to smoothing waypoints
     //template valid_checker_t has to be implemented two functions:
