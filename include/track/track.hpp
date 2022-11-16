@@ -90,7 +90,7 @@ namespace acsr {
             //std::cout<<casadi::DM::sum2(casadi::DM::sum1(outer_line.T()-outer_line_test))<<std::endl;
             //std::cout<<casadi::DM::sum2(casadi::DM::sum1(inner_line.T()-inner_line_test))<<std::endl;
 
-            search_tree = RTree(center_line);
+            //search_tree = RTree(center_line);
 
         }
 

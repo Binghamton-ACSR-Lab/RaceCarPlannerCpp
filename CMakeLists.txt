@@ -8,6 +8,8 @@ set(CMAKE_CXX_STANDARD 17)
 
 find_package(Python3 COMPONENTS Interpreter Development NumPy REQUIRED)
 find_package(PythonLibs 3.0 REQUIRED)
+find_package(Boost COMPONENTS system filesystem REQUIRED)
+find_package(websocketpp REQUIRED)
 find_package(SQLiteCpp REQUIRED)
 find_package(yaml-cpp)
 find_package(Threads)

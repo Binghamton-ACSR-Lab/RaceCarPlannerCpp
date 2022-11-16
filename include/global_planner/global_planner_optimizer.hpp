@@ -32,7 +32,7 @@ namespace acsr{
                                          std::shared_ptr<valid_checker_t> valid_checker=nullptr)
                 :vehicle_params_(vehicle_params),path_width_(path_width),front_tire_params_(front_tire_params),rear_tire_params_(rear_tire_params),N_(optimization_resolution),path_(path_ptr){
 
-            option_["max_iter"] = 30000;
+            option_["max_iter"] = 3000;
             option_["tol"]=1e-6;
             option_["linear_solver"]="ma57";
 
@@ -527,6 +527,8 @@ namespace acsr{
         }
 
     };
+
+
 
     /*
     class BicycleDynamicsOneBrakeOptimizer{

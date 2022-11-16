@@ -9,7 +9,8 @@
 #include <string>
 #include <iostream>
 #include "rtree.hpp"
-#include <matplotlibcpp.h>
+#include "casadi/casadi.hpp"
+//#include <matplotlibcpp.h>
 
 
 using casadi::Slice;
@@ -51,7 +52,7 @@ namespace acsr {
             f_kappa = casadi::Function("kappa",{t},{kappa});
             f_phi = casadi::Function("phi",{t},{casadi::MX::atan2(jac(1),jac(0))});
 
-            auto theta = M_PI/2;
+            const auto theta = M_PI/2;
             auto rot_mat_vector = std::vector<std::vector<double>>{{cos(theta),-sin(theta)},{sin(theta),cos(theta)}};
             auto rot_mat = DM(rot_mat_vector);
             MXDict dae;
@@ -71,8 +72,6 @@ namespace acsr {
             s_to_t_lookup = interpolant("s_to_t","linear",std::vector<std::vector<double>>{s_value_vec},ts_vec);
             t_to_s_lookup = interpolant("t_to_s","linear",std::vector<std::vector<double>>{ts_vec},s_value_vec);
 
-
-
             auto xy =pt_t_mx + MX::mtimes(rot_mat,jac/MX::norm_2(jac))*n;
 
             f_tn_to_xy = casadi::Function("tn_to_xy",{t,n},{xy});
@@ -82,12 +81,57 @@ namespace acsr {
             auto dm_n = -MX::sin(phi)*(dm_xy-pt_t_mx)(0) + MX::cos(phi)*(dm_xy-pt_t_mx)(1);
             f_xy_to_tn = casadi::Function("xy_to_tn",{dm_xy,t},{dm_n});
 
-            //search_tree = RTree(center_line);
+            DM ns_zeros = DM::zeros(ts.rows(),ts.columns());
+            auto center_line = f_tn_to_xy(DMVector {ts.T(),ns_zeros.T()})[0];
+            auto dm_x = center_line(0,Slice());
+            auto dm_y = center_line(1,Slice());
+            std::vector<double> vec_x{dm_x->begin(),dm_x->end()};
+            std::vector<double> vec_y{dm_y->begin(),dm_y->end()};
+            std::vector<double> vec_ts{ts->begin(),ts->end()};
+
+            search_tree = RTree(vec_x,vec_y,vec_ts);
+
+        }
+
+        DM xy2t(const DM& xy,bool refined=false){
+            DM dm_x,dm_y;
+
+            if(xy.is_vector()){
+                dm_x=xy(0);
+                dm_y=xy(1);
+            }else {
+                dm_x = xy(0, Slice());
+                dm_y = xy(1, Slice());
+            }
+            std::vector<double> vec_x{dm_x->begin(),dm_x->end()};
+            std::vector<double> vec_y{dm_y->begin(),dm_y->end()};
+            auto ts_vec = search_tree.findNearest(vec_x,vec_y);
+            //return DM(ts_vec);
+            if(!refined){
+                return DM(ts_vec);
+            }
+            //auto tangent_vec = f_tangent_vec(dm_t)[0];
+            //auto xy_on_line = f_xy(dm_t)[0];
+
+            auto t = MX::sym("t",1,ts_vec.size());
+            auto tangent_vec = f_tangent_vec(t)[0];
+            auto xy_on_line = f_xy(t)[0];
+
+            auto norm_vec = xy-xy_on_line;
+            auto dot_prod = (norm_vec(0,Slice()) - tangent_vec(0,Slice()))*(norm_vec(0,Slice()) - tangent_vec(0,Slice()))+(norm_vec(1,Slice()) - tangent_vec(1,Slice()))*(norm_vec(1,Slice()) - tangent_vec(1,Slice()));
+            auto f = casadi::Function("f",{t},{dot_prod});
+            auto rf = casadi::rootfinder("rf","newton",f);
+            auto t_real = rf(DM(ts_vec))[0];
+
+            //DM n = f_xy_to_tn(DMVector{xy,t_real})[0];
+            return DM(t_real);
 
         }
 
 
 
+
+/*
         void plot(double width = 10.0,int resolution=100){
             namespace plt = matplotlibcpp;
             auto ts = casadi::DM::linspace(0, t_max, resolution * t_max);
@@ -120,7 +164,7 @@ namespace acsr {
                       std::vector<double>{pts_y_dm->begin(),pts_y_dm->end()},10);
             plt::show();
         }
-
+*/
         double get_max_length(){
             return s_max;
         }
@@ -179,7 +223,7 @@ namespace acsr {
         //casadi::DM center_line;
         //casadi::DM inner_line;
         //casadi::DM outer_line;
-        //RTree search_tree;
+        RTree search_tree;
 
 
         static casadi::Function get_parametric_function(const casadi::DM& waypoints,bool closed= false){
