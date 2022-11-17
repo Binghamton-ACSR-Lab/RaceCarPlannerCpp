@@ -8,6 +8,8 @@
 #include <casadi/casadi.hpp>
 namespace bg=boost::geometry;
 
+using param_t = std::map<std::string,double>;
+
 template<typename P>
 struct DistancePoint {
     double distance;

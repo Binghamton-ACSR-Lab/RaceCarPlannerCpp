@@ -6,7 +6,7 @@
 #define CAR_CONTROL_CPP_REMOTE_CONTROLLER_HPP_
 
 #include "path.hpp"
-#include "websocket_server.hpp"
+#include "../unity_controller/include/websocket_server.hpp"
 #include <casadi/casadi.hpp>
 #include "global_trajectory.hpp"
 

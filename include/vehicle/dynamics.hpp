@@ -10,72 +10,7 @@
 
 namespace acsr{
     using param_t = std::map<std::string,double>;
-    class BicycleKinematic{
-    public:
-        BicycleKinematic() = default;
-        BicycleKinematic(const param_t& param){
-            lf = param.at("lf");
-            lr = param.at("lr");
 
-
-        }
-
-        template<class T>
-        T update(T& x,T& u){
-            return T::vertcat(
-                    x(3)*casadi::cos(x(2)),
-                    x(3)*casadi::sin(x(2)),
-                    x(3)/(lf+lr) * casadi::tan(u(0)),
-                    u(1)
-            );
-        }
-
-    protected:
-        const unsigned int nx = 4;
-        const unsigned int nu = 2;
-
-        double lf;
-        double lr;
-
-    };
-
-    class BicycleKineticByParametricArc : public BicycleKinematic{
-    public:
-        BicycleKineticByParametricArc():BicycleKinematic(){
-        }
-
-        BicycleKineticByParametricArc(const param_t& param, std::shared_ptr<Track> ptr_track) : BicycleKinematic(param),
-                                                                                                ptr_track{ptr_track},
-                                                                                                k{param.at("k")}{
-        }
-
-        template<class T>
-        T update(T& x,T& u){
-            //auto t = x(0);
-            //auto n = x(1);
-            //auto phi = x(2);
-            //auto vx = x(3);
-
-            auto kappa = ptr_track->f_kappa(x(0));
-            auto phi_c = ptr_track->f_phi(x(0));
-            auto tangent_vec = ptr_track->f_tangent_vec(x(0));
-
-            auto t_dot = x(3)*casadi::cos(x(2)-phi_c+u(0))/(casadi::norm_2(tangent_vec)*(1-x(1)*kappa));
-            auto n_dot = x(3)*casadi::sin(x(2)-phi_c+u(0));
-            auto phi_dot = x(3)/(lf+lr) * casadi::tan(u(0));
-
-            return T::vertcat(
-                t_dot,
-                n_dot,
-                phi_dot,
-                k*u(1)
-            );
-        }
-
-    protected:
-        double k;
-        std::shared_ptr<Track> ptr_track;
-    };
 
 
     template<class front_tire_model_t,class rear_tire_model_t>
