@@ -21,7 +21,7 @@ namespace acsr{
 
         template<class F>
         void run(F f){
-            server.set_message_handler(std::bind(&WsServer::on_message<F>, this, f,std::placeholders::_1, std::placeholders::_2));
+            server.set_message_handler(std::bind(&WsServer::on_message<F>, this,std::placeholders::_1, std::placeholders::_2,f));
             server.set_access_channels(websocketpp::log::alevel::all);
             server.set_error_channels(websocketpp::log::elevel::all);
 
@@ -35,7 +35,7 @@ namespace acsr{
         ws_server_t server;
 
         template<class F>
-        void on_message(F f,websocketpp::connection_hdl hdl, ws_server_t::message_ptr msg){
+        void on_message(websocketpp::connection_hdl hdl, ws_server_t::message_ptr msg,F f){
             auto msg_str = msg->get_payload();
             if(msg_str.substr(0,2) != "42"){
                 std::cout<<"message type error\n";
@@ -47,7 +47,7 @@ namespace acsr{
             json& data = json_obj[1];
             if(data.contains("waypoints")){
                 std::vector<double> x = data["waypoints"]["ptsx"];
-                std::vector<double> y = data["waypoints"]["ptsx"];
+                std::vector<double> y = data["waypoints"]["ptsy"];
                 std::ofstream outfile("../data/temp.csv");
                 for(auto i=0;i<x.size();i++)
                     outfile<<std::fixed << std::setprecision(1)<<std::setw(8)<<x[i]<<", "<<std::setw(10)<<y[i]<<std::endl;

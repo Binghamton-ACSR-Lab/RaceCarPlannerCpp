@@ -18,8 +18,15 @@ namespace acsr {
     class CSVData {
     public:
         CSVData(std::vector<std::string> header,std::vector<std::vector<std::string>> data)
-            :header(std::move(header)),
-            data(std::move(data)){
+            :header_(std::move(header)),data_(data){
+            /*
+            std::transform(data.begin(),data.end(),std::back_inserter(data_),[](std::vector<std::string>& str){
+                std::vector<std::string> row;
+                for(auto& s:str)
+                    row.push_back(boost::trim_copy(s));
+                return row;
+            });*/
+
         }
 
 
@@ -29,7 +36,7 @@ namespace acsr {
         bool to(std::vector<std::vector<T>>& num_matrix){
 
             num_matrix.clear();
-            for(auto &vec:data){
+            for(auto &vec:data_){
                 std::vector<T> num_vec;
                 for(auto& s:vec){
                     auto value = T{};
@@ -61,8 +68,8 @@ namespace acsr {
 
 
     private:
-        std::vector<std::string> header;
-        std::vector<std::vector<std::string>> data;
+        std::vector<std::string> header_;
+        std::vector<std::vector<std::string>> data_;
 
     };
 
@@ -94,6 +101,9 @@ namespace acsr {
                 std::vector<std::string> vec;
                 line.erase(line.find_last_not_of(" \n\r\t")+1);
                 boost::algorithm::split(vec, line, boost::is_any_of(delimeter));
+                for(auto& s:vec){
+                    boost::trim(s);
+                }
                 dataList.push_back(vec);
             }
             // Close the File

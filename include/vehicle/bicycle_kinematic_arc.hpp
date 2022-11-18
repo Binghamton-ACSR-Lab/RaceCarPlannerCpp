@@ -8,38 +8,37 @@
 #include "path.hpp"
 namespace acsr {
 
+
     struct BicycleKinematicArc {
 
         BicycleKinematicArc(const param_t &param, std::shared_ptr<Path> path_ptr):path_ptr_(path_ptr){
-            lf_ = param.at("lf");
-            lr_ = param.at("lr");
+            if(param.find("wheel_base")!=param.end())
+                wheel_base_ = param.at("wheel_base");
+            else
+                wheel_base_ = param.at("lf")+param.at("lr");
         }
 
-        template<class T,class op=std::function<T(const T&)>>
-        T update(const T& x, const T& u,op f =nullptr){
-            auto t = x(0,all);
-            auto n = x(1,all);
-            auto phi = x(2,all);
-            auto vx = x(3,all);
 
-            auto delta = u(0,all);
-            auto d = u(1,all);
+        MX update(const MX& x, const MX& u){
+            //auto t = x(0,all);
+            //auto n = x(1,all);
+            //auto phi = x(2,all);
+            //auto vx = x(3,all);
+
+            //auto delta = u(0,all);
+            //auto d = u(1,all);
 
             //auto path_ptr = global_path_ptr_->get_path();
 
-            auto kappa = path_ptr_->f_kappa(t);
-            auto phi_c = path_ptr_->f_phi(t);
-            auto tangent_vec = path_ptr_->f_tangent_vec(t);
+            auto kappa = path_ptr_->f_kappa(x(0))[0];
+            auto phi_c = path_ptr_->f_phi(x(0))[0];
+            auto tangent_vec = path_ptr_->f_tangent_vec(x(0))[0];
 
-            auto t_dot = vx*T::cos(phi-phi_c+delta)/(T::norm_2(tangent_vec)*(1.0-n*kappa));
-            auto n_dot = vx*T::sin(phi-phi_c+delta);
-            auto phi_dot = vx/(lf_+lr_) * T::tan(delta);
-            T v_dot;
-            if(f==nullptr)
-                v_dot = 7.9*d;
-            else
-                v_dot = f(x);
-            return T::vertcat({t_dot,n_dot,phi_dot,v_dot});
+            auto t_dot = x(3)*MX::cos(x(2)-phi_c+u(0))/(MX::norm_2(tangent_vec)*(1.0-x(1)*kappa));
+            auto n_dot = x(3)*MX::sin(x(2)-phi_c+u(0));
+            auto phi_dot = x(3)/wheel_base_ * MX::tan(u(0));
+            //auto v_dot = ;
+            return MX::vertcat({t_dot,n_dot,phi_dot,7.9*u(1)});
         }
 
         constexpr static unsigned int nx = 4;
@@ -47,8 +46,8 @@ namespace acsr {
 
     private:
         const casadi::Slice all = casadi::Slice();
-        double lf_;
-        double lr_;
+        double wheel_base_{};
+
         std::shared_ptr<Path> path_ptr_;
 
     };

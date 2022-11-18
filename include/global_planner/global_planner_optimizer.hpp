@@ -161,25 +161,9 @@ namespace acsr{
             auto fy_f_sym_array = front_tire_model->get_lateral_force(alpha_f, double(Fz(0)));
             auto fy_r_sym_array = rear_tire_model->get_lateral_force(alpha_r, double(Fz(1)));
 
-            //X_dot(0, all) = dt_sym_array*(vx_sym_array * MX::cos(dphi_c_sym_array) - vy_sym_array * MX::sin(dphi_c_sym_array))/(tangent_vec_norm*(1-n_sym_array*kappa_array));
-            //X_dot(1, all) = dt_sym_array*(vx_sym_array * MX::sin(dphi_c_sym_array) + vy_sym_array* MX::cos(dphi_c_sym_array)) ;
-            //X_dot(2, all) = dt_sym_array*omega_sym_array;
-            //X_dot(3, all) = dt_sym_array * (fx_r_sym_array + fx_f_sym_array * MX::cos(delta_sym_array) - fy_f_sym_array * MX::sin(delta_sym_array) + mass * vy_sym_array* omega_sym_array)/ mass;
-            //X_dot(4, all) = dt_sym_array * (fy_r_sym_array + fx_f_sym_array * MX::sin(delta_sym_array) + fy_f_sym_array * MX::cos(delta_sym_array) - mass * vx_sym_array * omega_sym_array)/ mass;
-            //X_dot(5, all) = dt_sym_array * (fy_f_sym_array * lf * MX::cos(delta_sym_array) + fx_f_sym_array * lf * MX::sin(delta_sym_array) - fy_r_sym_array * lr)/ Iz ;
-            //X_dot(6, all) = dt_sym_array * delta_dot_sym_array;
-
-
-
-            //auto n_low_obj = MX::exp(MX(road_constraint_lower_bound_)-X(IDX_X_n,all));
-            //auto n_upper_obj = MX::exp(X(IDX_X_n,all)-MX(road_constraint_upper_bound_));
             auto n_low_obj = MX::atan(10*(MX(road_constraint_lower_bound_)-X(IDX_X_n,all)));
             auto n_upper_obj = MX::atan(10*(X(IDX_X_n,all)-MX(road_constraint_upper_bound_)));
 
-            //auto n_obj = MX::atan(5 * (n_sym_array * n_sym_array - (path_width_ / 2) *(path_width_ / 2))) + casadi::pi / 2;
-            //opti.minimize(MX::sum2(dt_sym_array) + MX::dot(n_obj, n_obj));
-            //opti.minimize(MX::sum2(dt_sym_array) + MX::dot(delta_dot_sym_array,delta_dot_sym_array) + 15.0*MX::dot(n_obj,n_obj));
-            //opti.minimize(MX::sum2(dt_sym_array) + MX::dot(delta_dot_sym_array,delta_dot_sym_array));
             opti.minimize(10*MX::sum2(dt_sym_array) + 10*MX::dot(delta_dot_sym_array,delta_dot_sym_array) + MX::sum2(n_low_obj) + MX::sum2(n_upper_obj));
             //dynamics
             //opti.subject_to(X(all, Slice(1,N+1)) == X(all, _N_1) + X_dot);
@@ -257,126 +241,6 @@ namespace acsr{
             datatable_name_ = table_name;
         }
 
-
-        /*
-        void plot_trajectory(const std::shared_ptr<Track>& plot_track = nullptr,const std::string& table_name=std::string()){
-            namespace plt = matplotlibcpp;
-            std::string table_;
-            std::shared_ptr<Track> track_;
-            if(current_datatable_name.empty() && table_name.empty()){
-                std::cout<<"no data find\n";
-                return;
-            }
-            if(!table_name.empty()){
-                table_ = table_name;
-            }else{
-                table_=current_datatable_name;
-            }
-
-            if(plot_track== nullptr && track==nullptr){
-                std::cout<<"no track data\n";
-                return;
-            }
-
-            if(plot_track)track_=plot_track;
-            else track_ = track;
-
-            SQLite::Database    db(database_file, SQLite::OPEN_READONLY);
-            std::cout << "SQLite database file '" << db.getFilename().c_str() << "' opened successfully\n";
-            //std::string count_str = db.execAndGet("SELECT COUNT(*) FROM " + table_);
-            //int count = std::stoi(count_str);
-
-            std::vector<double> tau_vec;
-            std::vector<double> s_vec;
-            std::vector<double> x_vec;
-            std::vector<double> y_vec;
-            std::vector<double> phi_vec;
-            std::vector<double> vx_vec;
-            std::vector<double> vy_vec;
-            std::vector<double> n_vec;
-            std::vector<double> dt_vec;
-            std::vector<double> delta_vec;
-            std::vector<double> throttle_vec;
-            std::vector<double> br_vec;
-            std::vector<double> bf_vec;
-
-            SQLite::Statement query(db, "SELECT dt,tau,s,n,x,y,phi,vx,vy,delta,throttle,front_brake,rear_brake FROM "+table_);
-            while (query.executeStep())
-            {
-                dt_vec.push_back(query.getColumn(0));
-                tau_vec.push_back(query.getColumn(1));
-                s_vec.push_back(query.getColumn(2));
-                n_vec.push_back(query.getColumn(3));
-                x_vec.push_back(query.getColumn(4));
-                y_vec.push_back(query.getColumn(5));
-                phi_vec.push_back(query.getColumn(6));
-                vx_vec.push_back(query.getColumn(7));
-                vy_vec.push_back(query.getColumn(8));
-                delta_vec.push_back(query.getColumn(9));
-                throttle_vec.push_back(query.getColumn(10));
-                bf_vec.push_back(query.getColumn(11));
-                br_vec.push_back(query.getColumn(12));
-            }
-
-            auto tau_vec_for_track = tau_vec;
-            int size = tau_vec.size()/10;
-            double dtau = (tau_vec.back()-tau_vec.front())/(tau_vec.size()-1);
-            for(int i=0;i<size;++i){
-                tau_vec_for_track.insert(tau_vec_for_track.begin(),tau_vec_for_track.front()-dtau);
-                tau_vec_for_track.push_back(tau_vec_for_track.back()+dtau);
-            }
-            std::transform(tau_vec_for_track.begin(),tau_vec_for_track.end(),tau_vec_for_track.begin(),[&track_](double v){
-                if(v<0)v+=track_->get_max_tau();
-                return v;
-            });
-
-            DM center_line_tau = (DM(tau_vec_for_track)).T();
-            DM zero_vec = DM::zeros(1,tau_vec_for_track.size());
-            DM one_vec = DM::ones(1,tau_vec_for_track.size());
-            auto center_line = track_->f_tn_to_xy(DMVector {center_line_tau,zero_vec})[0];
-            auto inner_line = track_->f_tn_to_xy(DMVector {center_line_tau,track_->get_width()/2*one_vec})[0];
-            auto outer_line = track_->f_tn_to_xy(DMVector {center_line_tau,-track_->get_width()/2*one_vec})[0];
-
-            auto center_x_dm = center_line(0,Slice());
-            auto center_y_dm = center_line(1,Slice());
-            auto inner_x_dm = inner_line(0,Slice());
-            auto inner_y_dm = inner_line(1,Slice());
-            auto outer_x_dm = outer_line(0,Slice());
-            auto outer_y_dm = outer_line(1,Slice());
-            plt::figure(1);
-            plt::plot(std::vector<double>{center_x_dm->begin(),center_x_dm->end()},
-                      std::vector<double>{center_y_dm->begin(),center_y_dm->end()},
-                      "y--",
-                      std::vector<double>{inner_x_dm->begin(),inner_x_dm->end()},
-                      std::vector<double>{inner_y_dm->begin(),inner_y_dm->end()},
-                      "k-",
-                      std::vector<double>{outer_x_dm->begin(),outer_x_dm->end()},
-                      std::vector<double>{outer_y_dm->begin(),outer_y_dm->end()},
-                      "k-",
-                      x_vec,
-                      y_vec,
-                      "b-");
-
-
-            std::vector<double> t(dt_vec.size());
-            t[0]=0;
-            std::partial_sum(dt_vec.begin(),dt_vec.end()-1,t.begin()+1);
-
-            plt::figure(2);
-            plt::named_plot("vx",t,vx_vec,"k--");
-            plt::named_plot("vy",t,vy_vec,"b-");
-            plt::legend();
-
-            plt::figure(3);
-            plt::named_plot("throttle",t,throttle_vec,"g-.");
-            plt::named_plot("front brake",t,bf_vec,"k--");
-            plt::named_plot("rear brake",t,br_vec,"b-");
-            plt::named_plot("steering",t,delta_vec,"r-*");
-            plt::legend();
-
-            plt::show();
-        }
-        */
 
     private:
         std::shared_ptr<Path> path_;
@@ -525,6 +389,179 @@ namespace acsr{
 
 
         }
+
+    };
+
+
+
+
+
+    class BicycleKinematicOptimizer{
+    public:
+        BicycleKinematicOptimizer() = default;
+
+        explicit BicycleKinematicOptimizer(std::shared_ptr<Path> path_ptr,
+                                           double path_width,
+                                           const param_t & vehicle_params)
+                :path_width_(path_width),path_ptr_(path_ptr){
+
+            option_["max_iter"] = 30000;
+            option_["tol"]=1e-9;
+            option_["linear_solver"]="ma57";
+
+
+            delta_min_ = vehicle_params.at("delta_min");
+            delta_max_ = vehicle_params.at("delta_max");
+            v_min_ = vehicle_params.at("v_min");
+            v_max_ = vehicle_params.at("v_max");
+            a_min_ = vehicle_params.at("d_min");
+            a_max_ = vehicle_params.at("d_max");
+
+            if(vehicle_params.find("wheel_base")!=vehicle_params.end())
+                wheel_base_ = vehicle_params.at("wheel_base");
+            else
+                wheel_base_ = vehicle_params.at("lf")+vehicle_params.at("lr");
+
+        }
+
+        std::pair<bool,std::tuple<DM,DM,DM>> make_plan(double s0 =0, double st=-1, double v0=0.15, int N =100, bool print = true){
+
+
+            auto all = Slice();
+            auto _0_N = Slice(0,N);
+            auto _N_1 = Slice(1,N+1);
+            Dict casadi_option;
+            casadi_option["print_time"]=print;
+            if(print){
+                option_["print_level"]=5;
+            }else{
+                option_["print_level"]=1;
+            }
+
+            if(st<=s0){
+                st = path_ptr_->get_max_length();
+            }
+            auto tau_0 = path_ptr_->s_to_t_lookup(DM{s0})[0];
+            //auto tau_t = path_ptr_->t_to_s_lookup(DM{tau_t})[0];
+            const auto s_array = casadi::DM::linspace(s0,st,N+1).T();
+            const auto tau_array = path_ptr_->s_to_t_lookup(s_array)[0];
+            auto phi0 = double(path_ptr_->f_phi(DM{tau_0})[0]);
+
+            //auto tau_array_mid = path_ptr_->s_to_t_lookup((s_val(0,_0_N)+s_val(0,_N_1))*0.5)[0];
+
+            auto kappa_array = path_ptr_->f_kappa(tau_array)[0];
+            auto tangent_vec_array= path_ptr_->f_tangent_vec(tau_array)[0];
+            auto phi_array = path_ptr_->f_phi(tau_array)[0];
+            auto sin_phi_array = DM::sin(phi_array(0,_0_N));
+            auto cos_phi_array = DM::cos(phi_array(0,_0_N));
+            //auto phi_array = DM::atan2(tangent_vec_array(1,all),tangent_vec_array(0,all));
+            //auto phi_array_mid = phi_array_raw+4*pi;
+
+            auto tangent_vec_norm = DM::sqrt((tangent_vec_array(0,all)*tangent_vec_array(0,all)+tangent_vec_array(1,all)*tangent_vec_array(1,all)));
+
+            casadi::Opti opti;
+            auto X = opti.variable(nx,N+1);
+            auto U = opti.variable(nu, N);
+            auto dt_sym_array = opti.variable(1,N);
+
+            auto n_sym_array = X(IDX_X_n,_0_N);
+            auto phi_sym_array = X(IDX_X_phi, _0_N);
+
+
+            auto vx_sym_array = (X(IDX_X_vx,_0_N)+X(IDX_X_vx,_N_1))*0.5;
+
+            auto delta_sym_array = U(IDX_U_delta,all);
+            auto a_sym_array = U(IDX_U_a,all);
+
+
+
+            auto X0 = casadi::DM::vertcat({tau_0, 0, phi0, v0});
+            //auto dphi_c_sym_array =  phi_sym_array - phi_array(0,_0_N);
+
+            auto n_obj = MX::exp(2*(X(IDX_X_n,Slice())/(path_width_/2)-1)) + MX::exp(2*(X(IDX_X_n,Slice())/(-path_width_/2)-1));
+            //opti.minimize(MX::sum2(dt_sym_array));
+            opti.minimize(100*MX::sum2(dt_sym_array)+ MX::sum2(n_obj));
+            //dynamics
+
+            //opti.subject_to(X(IDX_X_t, _N_1) == X(IDX_X_t, _0_N) + dt_sym_array * (vx_sym_array * MX::cos(dphi_c_sym_array))/(tangent_vec_norm(0,_0_N)*(1-n_sym_array*kappa_array(0,_0_N))));
+            //opti.subject_to(X(IDX_X_n, _N_1) == X(IDX_X_n, _0_N) + dt_sym_array * (vx_sym_array * MX::sin(dphi_c_sym_array)));
+            //opti.subject_to(X(IDX_X_phi, _N_1) == X(IDX_X_phi, _0_N) + dt_sym_array * vx_sym_array * MX::tan(delta_sym_array)/wheel_base_);
+            opti.subject_to(X(IDX_X_t, _N_1) == X(IDX_X_t, _0_N) + dt_sym_array * (vx_sym_array * (MX::cos(phi_sym_array)*cos_phi_array+MX::sin(phi_sym_array)*sin_phi_array))/(tangent_vec_norm(0,_0_N)*(1-n_sym_array*kappa_array(0,_0_N))));
+            opti.subject_to(X(IDX_X_n, _N_1) == X(IDX_X_n, _0_N) + dt_sym_array * (vx_sym_array * (MX::sin(phi_sym_array)*cos_phi_array-MX::cos(phi_sym_array)*sin_phi_array)));
+
+            opti.subject_to(X(IDX_X_phi, _N_1) == X(IDX_X_phi, _0_N) + dt_sym_array * vx_sym_array * delta_sym_array/wheel_base_);
+            opti.subject_to(X(IDX_X_vx, _N_1) == X(IDX_X_vx, _0_N) + dt_sym_array * a_sym_array);
+
+            //inital conditions
+            opti.subject_to(X(0, all) == tau_array);
+            opti.subject_to(X(all, 0) == X0);
+            opti.subject_to(dt_sym_array >0);
+
+            //state boundary
+            //opti.subject_to(opti.bounded(-path_width_/2, X(IDX_X_n,_0_N), path_width_/2));
+            opti.subject_to(vx_sym_array>=v_min_);
+
+
+            //control boundary
+            opti.subject_to(opti.bounded(a_min_, a_sym_array, a_max_));
+            opti.subject_to(opti.bounded(delta_min_, delta_sym_array, delta_max_));
+
+
+            auto X_guess = casadi::DM::zeros(nx,N+1);
+            auto U_guess = casadi::DM::zeros(nu,N);
+
+
+            //for(auto i=0;i<N+1;++i)
+            //    X_guess(Slice(), i) = X0;
+
+            X_guess(IDX_X_t,all) = tau_array;
+            X_guess(IDX_X_phi,all)=phi_array;
+            X_guess(IDX_X_vx,all)=v0;
+
+            U_guess(0,all) = phi_array(_N_1)-phi_array(_0_N);
+
+            opti.set_initial(X, X_guess);
+            opti.set_initial(U, U_guess);
+            opti.set_initial(dt_sym_array,(s_array(_N_1)-s_array(_0_N))/v0);
+
+            opti.solver("ipopt", casadi_option, option_);
+            try{
+                auto sol = opti.solve();
+                auto dt_array = sol.value(dt_sym_array);
+                auto sol_x = sol.value(X);
+                auto sol_u = sol.value(U);
+                return std::make_pair(true,std::make_tuple(dt_array,sol_x,sol_u));
+            }
+            catch (CasadiException& e){
+                std::cout<<e.what()<<std::endl;
+                std::cout<<"Solve Optimal Problem Fails\n";
+                return std::make_pair(false,std::make_tuple(DM{},DM{},DM{}));
+            }
+
+        }
+
+    public:
+        constexpr static int nx = 4;
+        constexpr static int nu = 2;
+        constexpr static unsigned IDX_X_t = 0;
+        constexpr static unsigned IDX_X_n = 1;
+        constexpr static unsigned IDX_X_phi = 2;
+        constexpr static unsigned IDX_X_vx = 3;
+        constexpr static unsigned IDX_U_delta = 0;
+        constexpr static unsigned IDX_U_a = 1;
+
+    private:
+        std::shared_ptr<Path> path_ptr_;
+        double path_width_{};
+
+        Dict option_;
+
+        double delta_min_,delta_max_,v_min_,v_max_,a_min_,a_max_,wheel_base_;
+
+
+
+
+
 
     };
 

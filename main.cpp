@@ -125,20 +125,23 @@ void track_test(){
 using namespace std;
 int main(int argc, char **argv) {
     DM aa{1,2},bb{3,4};
-    auto a = std::vector<std::vector<double>>{{1,2},{3,4}};
+    auto a = std::vector<std::vector<double>>{{1},{3}};
     auto b = std::vector<std::vector<double>>{{4,2,5},{1,1,4}};
+
 
     auto dm_a = DM(a);
     auto dm_b = DM(b);
+    auto dm_c = DM{2,3,5};
+    std::cout<<dm_a*dm_b<<std::endl;
 
-    std::cout<<exp(aa)<<std::endl;
+    std::cout<<dm_a<<std::endl;
+    std::cout<<dm_c<<std::endl;
+    std::cout<<repmat(dm_c.T(),2,1)<<std::endl;
 
-    DM c{11.0};
-    std::cout<<dm_a-c<<endl;
-    std::cout<<DM::mtimes(dm_a,aa)<<endl;
-    std::cout<<DM::mmax(dm_a);
-    std::cout<<c/aa<<std::endl;
-    make_planner_test();
+    auto t = MX::sym("t",1,3);
+    auto rep_t = repmat(t,2,1);
+    std::cout<<rep_t.size1()<<'\t'<<rep_t.size2()<<std::endl;
+    //make_planner_test();
     //waypoint_process_test();
 
     //path_preprocessor_test();

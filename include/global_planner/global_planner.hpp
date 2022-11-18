@@ -20,16 +20,24 @@ using casadi::MX;
 namespace acsr{
 
 
-    template <int nx_,int nu_,int N_>
+    template <class DYNAMICS>
     class AcsrGlobalPlanner{
     public:
+        const int nx_=DYNAMICS::nx;
+        const int nu_=DYNAMICS::nu;
+
         AcsrGlobalPlanner()=default;
 
-        template<class DYNAMICS, class GOAL>
-        std::pair<bool,std::tuple<DM,DM,DM>> make_plan(DYNAMICS update,GOAL goal,DM& x0, DM& tau_array, DM& state_boundary, DM& control_boundary,casadi::Dict solver_option={},casadi::Dict casadi_option={}){
+        template<class GOAL>
+        std::pair<bool,std::tuple<DM,DM,DM>> make_plan(DYNAMICS dynamics,GOAL goal,int horizon, DM& x0, DM& tau_array,
+                                                       std::vector<double>& state_low_boundary,
+                                                       std::vector<double>& state_up_boundary,
+                                                       std::vector<double>& control_low_boundary,
+                                                       std::vector<double>& control_up_boundary,
+                                                       casadi::Dict solver_option={},casadi::Dict casadi_option={}){
             auto all = casadi::Slice();
-            auto _0_N = casadi::Slice(0,N_);
-            auto _N_1 = casadi::Slice(1,N_+1);
+            auto _0_N = casadi::Slice(0,horizon);
+            auto _N_1 = casadi::Slice(1,horizon+1);
 
 #ifdef DEBUG
             assert(tau_array.rows()==1);
@@ -39,44 +47,56 @@ namespace acsr{
 #endif
 
             casadi::Opti opti;
-            auto X = opti.variable(nx_,N_+1);
-            auto U = opti.variable(nu_, N_);
-            auto dt_sym_array = opti.variable(1,N_);
+            auto X = opti.variable(nx_,horizon+1);
+            auto U = opti.variable(nu_, horizon);
+            auto dt_sym_array = opti.variable(1,horizon);
 
-            auto k1 = update(X(all,_0_N),U(all,all));
-            auto k2 = update(X(all,_0_N)+dt_sym_array/2*k1, U(all,k));
-            auto k3 = update(X(all,_0_N)+dt_sym_array/2*k2, U(all,k));
-            auto k4 = update(X(all,_0_N)+dt_sym_array*k3,   U(all,k));
-            auto x_next = X(all,_0_N) + dt_sym_array/6*(k1+2*k2+2*k3+k4);
+
+            //auto dt_full = MX::repmat(dt_sym_array,nx_);
+            //auto k1 = dynamics.update(X(all,_0_N),U(all,all));
+            //auto k2 = dynamics.update(X(all,_0_N)+dt_full/2*k1, U);
+            //auto k3 = dynamics.update(X(all,_0_N)+dt_full/2*k2, U);
+            //auto k4 = dynamics.update(X(all,_0_N)+dt_full*k3,   U);
+            //auto x_next = X(all,_0_N) + dt_sym_array/6*(k1+2*k2+2*k3+k4);
 
 
             opti.minimize(goal(dt_sym_array,X,U));
 
             //dynamics
-            opti.subject_to(X(all,_0_N) + dt_sym_array/6*(k1+2*k2+2*k3+k4) == X(all,_N_1))
+            auto x_dot = dynamics.update(X(all,_0_N),U);
+            //for(auto i=0;i<nx_;++i)
+            //    opti.subject_to(X(i,_0_N) + dt_sym_array*x_dot(i,all) == X(i,_N_1));
+            for(auto k=0;k<horizon;++k){
+                auto k1 = dynamics.update(X(all,k),         U(all,k));
+                auto k2 = dynamics.update(X(all,k)+dt_sym_array(k)/2*k1, U(all,k));
+                auto k3 = dynamics.update(X(all,k)+dt_sym_array(k)/2*k2, U(all,k));
+                auto k4 = dynamics.update(X(all,k)+dt_sym_array(k)*k3,   U(all,k));
+                auto x_next = X(all,k) + dt_sym_array(k)/6*(k1+2*k2+2*k3+k4);
+                opti.subject_to(X(all,k+1)==x_next); // close the gaps
+            }
 
             //reference
             opti.subject_to(X(0, all) == tau_array);
 
             //initial
-            opti.subject_to(X(all, 0) == X0);
+            opti.subject_to(X(all, 0) == x0);
             opti.subject_to(dt_sym_array >0);
 
             //state boundary
             for(auto i=0;i<nx_;++i){
-                if(state_boundary(1,i)>state_boundary(0,i))
-                    opti.subject_to(opti.bounded(state_boundary(0,i), X(i,all), state_boundary(1,i)));
+                if(state_up_boundary[i]>state_low_boundary[i])
+                    opti.subject_to(opti.bounded(state_low_boundary[i], X(i,all), state_up_boundary[i]));
             }
 
             //control boundary
             for(auto i=0;i<nu_;++i){
-                if(control_boundary(1,i)>control_boundary(0,i))
-                    opti.subject_to(opti.bounded(control_boundary(0,i), X(i,all), control_boundary(1,i)));
+                if(control_up_boundary[i]>control_low_boundary[i])
+                    opti.subject_to(opti.bounded(control_low_boundary[i], U(i,all), control_up_boundary[i]));
             }
 
-            auto X_guess = casadi::DM::zeros(nx_,N_+1);
-            for(auto i=0;i<N_+1;++i){
-                X_guess(Slice(), i) = X0;
+            auto X_guess = casadi::DM::zeros(nx_,horizon+1);
+            for(auto i=0;i<horizon+1;++i){
+                X_guess(Slice(), i) = x0;
             }
             opti.set_initial(X, X_guess);
 
@@ -98,7 +118,7 @@ namespace acsr{
 
 
         std::string save(SQLite::Database &db, DM& dt_array,DM& x,DM& u,const std::vector<std::string>& x_headers={},const std::vector<std::string>& u_headers={}){
-            std::cout << "SQLite database file '" << db.getFilename().c_str() << "' opened successfully\n";
+            std::cout << "Save data to SQLite database file '" << db.getFilename().c_str() << "\n";
             const auto now = std::chrono::system_clock::now();
             time_t rawtime;
             struct tm * timeinfo;
@@ -155,7 +175,9 @@ namespace acsr{
                 auto query_string = os.str();
 
                 //insert data rows
-                for(auto i=0;i<N_;++i){
+                auto N = x.columns()-1;
+
+                for(auto i=0;i<N;++i){
                     query = SQLite::Statement(db, query_string);
                     query.bind(1,double(dt_array(0,i)));
                     for(auto j=0;j<nx_;++j){
@@ -177,7 +199,7 @@ namespace acsr{
                 //insert last data row
                 query = SQLite::Statement(db, query_string);
                 for(auto j=0;j<nx_;++j){
-                    query.bind(j+2,double(x(j,N_)));
+                    query.bind(j+2,double(x(j,N)));
                 }
                 try {
                     query.exec();
@@ -190,11 +212,6 @@ namespace acsr{
             std::cout<<"save to database finished\n";
             return datatable_name;
         }
-
-    private:
-        //std::string datatable_name_ = std::string();
-        //std::string current_datatable_name_ = std::string();
-
 
 
     };
