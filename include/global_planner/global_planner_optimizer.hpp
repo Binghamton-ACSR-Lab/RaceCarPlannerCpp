@@ -476,20 +476,20 @@ namespace acsr{
 
 
             auto X0 = casadi::DM::vertcat({tau_0, 0, phi0, v0});
-            //auto dphi_c_sym_array =  phi_sym_array - phi_array(0,_0_N);
+            auto dphi_c_sym_array =  phi_sym_array - phi_array(0,_0_N);
 
-            auto n_obj = MX::exp(2*(X(IDX_X_n,Slice())/(path_width_/2)-1)) + MX::exp(2*(X(IDX_X_n,Slice())/(-path_width_/2)-1));
+            auto n_obj = MX::exp(5*(X(IDX_X_n,Slice())/(path_width_/2)-1)) + MX::exp(5*(X(IDX_X_n,Slice())/(-path_width_/2)-1));
             //opti.minimize(MX::sum2(dt_sym_array));
-            opti.minimize(100*MX::sum2(dt_sym_array)+ MX::sum2(n_obj));
+            opti.minimize(1000*MX::sum2(dt_sym_array)+ MX::sum2(n_obj));
             //dynamics
 
-            //opti.subject_to(X(IDX_X_t, _N_1) == X(IDX_X_t, _0_N) + dt_sym_array * (vx_sym_array * MX::cos(dphi_c_sym_array))/(tangent_vec_norm(0,_0_N)*(1-n_sym_array*kappa_array(0,_0_N))));
-            //opti.subject_to(X(IDX_X_n, _N_1) == X(IDX_X_n, _0_N) + dt_sym_array * (vx_sym_array * MX::sin(dphi_c_sym_array)));
-            //opti.subject_to(X(IDX_X_phi, _N_1) == X(IDX_X_phi, _0_N) + dt_sym_array * vx_sym_array * MX::tan(delta_sym_array)/wheel_base_);
-            opti.subject_to(X(IDX_X_t, _N_1) == X(IDX_X_t, _0_N) + dt_sym_array * (vx_sym_array * (MX::cos(phi_sym_array)*cos_phi_array+MX::sin(phi_sym_array)*sin_phi_array))/(tangent_vec_norm(0,_0_N)*(1-n_sym_array*kappa_array(0,_0_N))));
-            opti.subject_to(X(IDX_X_n, _N_1) == X(IDX_X_n, _0_N) + dt_sym_array * (vx_sym_array * (MX::sin(phi_sym_array)*cos_phi_array-MX::cos(phi_sym_array)*sin_phi_array)));
+            opti.subject_to(X(IDX_X_t, _N_1) == X(IDX_X_t, _0_N) + dt_sym_array * (vx_sym_array * MX::cos(dphi_c_sym_array))/(tangent_vec_norm(0,_0_N)*(1-n_sym_array*kappa_array(0,_0_N))));
+            opti.subject_to(X(IDX_X_n, _N_1) == X(IDX_X_n, _0_N) + dt_sym_array * (vx_sym_array * MX::sin(dphi_c_sym_array)));
+            opti.subject_to(X(IDX_X_phi, _N_1) == X(IDX_X_phi, _0_N) + dt_sym_array * vx_sym_array * MX::tan(delta_sym_array)/wheel_base_);
+            //opti.subject_to(X(IDX_X_t, _N_1) == X(IDX_X_t, _0_N) + dt_sym_array * (vx_sym_array * (MX::cos(phi_sym_array)*cos_phi_array+MX::sin(phi_sym_array)*sin_phi_array))/(tangent_vec_norm(0,_0_N)*(1-n_sym_array*kappa_array(0,_0_N))));
+            //opti.subject_to(X(IDX_X_n, _N_1) == X(IDX_X_n, _0_N) + dt_sym_array * (vx_sym_array * (MX::sin(phi_sym_array)*cos_phi_array-MX::cos(phi_sym_array)*sin_phi_array)));
 
-            opti.subject_to(X(IDX_X_phi, _N_1) == X(IDX_X_phi, _0_N) + dt_sym_array * vx_sym_array * delta_sym_array/wheel_base_);
+            //opti.subject_to(X(IDX_X_phi, _N_1) == X(IDX_X_phi, _0_N) + dt_sym_array * vx_sym_array * delta_sym_array/wheel_base_);
             opti.subject_to(X(IDX_X_vx, _N_1) == X(IDX_X_vx, _0_N) + dt_sym_array * a_sym_array);
 
             //inital conditions
@@ -514,11 +514,11 @@ namespace acsr{
             //for(auto i=0;i<N+1;++i)
             //    X_guess(Slice(), i) = X0;
 
-            X_guess(IDX_X_t,all) = tau_array;
-            X_guess(IDX_X_phi,all)=phi_array;
+            //X_guess(IDX_X_t,all) = tau_array;
+            //X_guess(IDX_X_phi,all)=phi_array;
             X_guess(IDX_X_vx,all)=v0;
 
-            U_guess(0,all) = phi_array(_N_1)-phi_array(_0_N);
+            //U_guess(0,all) = phi_array(_N_1)-phi_array(_0_N);
 
             opti.set_initial(X, X_guess);
             opti.set_initial(U, U_guess);

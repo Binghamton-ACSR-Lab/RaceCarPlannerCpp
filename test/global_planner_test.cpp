@@ -8,7 +8,7 @@ using namespace acsr;
 
 int main(){
     DM waypoints;
-    CSVReader reader("../data/tracks/temp_late_track.csv");
+    CSVReader reader("../data/temp.csv");
     auto csv_data = reader.read();
     if(!csv_data.toDM(waypoints)){
         std::cout<<"Convert csv data to dm fail\n";
@@ -31,12 +31,12 @@ int main(){
         vehicle_params[it->first.as<std::string>()]=it->second.as<double>();
     }
 
-    double track_width = 6.0;
+    double track_width = 10.0;
 
-    int N = 100;
+    int N = 1000;
 
     BicycleKinematicOptimizer optimizer(path_ptr,track_width,vehicle_params);
-    auto return_value = optimizer.make_plan(600.0,-1,0.15,N);
+    auto return_value = optimizer.make_plan(0,-1,0.15,N);
 
     if(return_value.first){
         DM dt = std::get<0>(return_value.second);
