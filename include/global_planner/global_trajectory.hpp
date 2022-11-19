@@ -17,7 +17,7 @@ namespace acsr {
 
         GlobalTrajectory() = default;
 
-        GlobalTrajectory(std::shared_ptr<Path> path_ptr,const DM& dm_dt, const DM& dm_state, const DM& dm_control, bool cartesian= false):path_ptr_(path_ptr) {
+        GlobalTrajectory(std::shared_ptr<Path> path_ptr,const DM& dm_dt, const DM& dm_state, const DM& dm_control):path_ptr_(path_ptr) {
             assert(dm_dt.is_vector());
             DM control;
             if(dm_state.columns()==dm_control.columns()){
@@ -42,7 +42,7 @@ namespace acsr {
 
 
 
-            auto tau = cartesian?path_ptr->xy2t(dm_state(Slice(0,2),Slice()),true):dm_state(0,Slice());
+            auto tau = path_ptr->xy2t(dm_state(Slice(0,2),Slice()),true);
             auto tau_vec = std::vector<double>(tau->begin(),tau->end());
             auto dt_vec = std::vector<double>(dt_->begin(),dt_->end());
 
@@ -52,18 +52,22 @@ namespace acsr {
             f_t_to_control = interpolant("t_to_control","linear",std::vector<std::vector<double>>{dt_vec},std::vector<double>{control->begin(),control->end()});
         }
 
-        std::pair<DM,DM> get_reference(const DM& start_state, int horizon,double dt,bool cartesian = true){
+        std::pair<DM,DM> get_reference_cartesian(const DM& start_state, int horizon,double dt){
 
-            auto tau0 = cartesian?path_ptr_->xy2t(start_state(Slice(0,3))):start_state(0);
+            auto tau0 = path_ptr_->xy2t(start_state(Slice(0,3)));
             auto t0 = f_tau_to_t(tau0)[0];
             auto t_vec = DM::linspace(t0,t0 + horizon*dt,horizon+1);
-            if(!cartesian)
-                return std::make_pair(f_t_to_state(t_vec)[0],f_t_to_control(t_vec)[0]);
-
             auto state = f_t_to_state(t_vec)[0];
             auto xy = path_ptr_->f_tn_to_xy(DMVector{state(0,Slice()),state(1,Slice())});
             state(Slice(0,2),Slice()) = xy;
             return std::make_pair(state,f_t_to_control(t_vec)[0]);
+        }
+
+        std::pair<DM,DM> get_reference_arc(const DM& start_state, int horizon,double dt){
+            auto tau0 = path_ptr_->xy2t(start_state(Slice(0,3)));
+            auto t0 = f_tau_to_t(tau0)[0];
+            auto t_vec = DM::linspace(t0,t0 + horizon*dt,horizon+1);
+            return std::make_pair(f_t_to_state(t_vec)[0],f_t_to_control(t_vec)[0]);
         }
 
 
@@ -81,7 +85,6 @@ namespace acsr {
 
     private:
         std::shared_ptr<Path> path_ptr_;
-
         DM dt_;
     };
 

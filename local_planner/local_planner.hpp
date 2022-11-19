@@ -16,14 +16,27 @@ using casadi::DM;
 
 namespace acsr {
 
-    struct KinematicModelController {
+    template<int nx,int nu>
+    class AcsrLocalPlanner{
+    public:
+        static constexpr int nx_ = nx;
+        static constexpr int nu_ = nu;
+        AcsrLocalPlanner()=default;
+
+        virtual std::pair<DM,DM> make_plan(const DM& x0) =0;
+
+    };
+
+
+    class KinematicModelController : AcsrLocalPlanner<4,2> {
+
+    public:
 
         KinematicModelController() = default;
 
         KinematicModelController(std::shared_ptr<GlobalTrajectory> gloabal_path_ptr, int horizon, double dt):global_path_ptr_(gloabal_path_ptr),horizon_(horizon),dt_(dt){
-            x = opti.variable(nx,horizon_+1);
-            u = opti.variable(nu,horizon_);
-
+            x = opti.variable(nx_,horizon_+1);
+            u = opti.variable(nu_,horizon_);
         }
 
         std::pair<DM,DM> make_plan(const DM& x0){
@@ -83,9 +96,6 @@ namespace acsr {
 
         }
 
-    public:
-        static constexpr int nx = 4;
-        static constexpr int nu = 2;
 
     private:
         const Slice all = casadi::Slice();

@@ -387,7 +387,6 @@ namespace acsr{
             }
             std::cout<<"save to database finished\n";
 
-
         }
 
     };
@@ -568,10 +567,6 @@ namespace acsr{
         Dict option_;
 
         double delta_min_,delta_max_,v_min_,v_max_,a_min_,a_max_,wheel_base_;
-
-
-
-
 
 
     };
