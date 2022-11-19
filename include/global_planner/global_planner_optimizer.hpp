@@ -478,7 +478,7 @@ namespace acsr{
             auto X0 = casadi::DM::vertcat({tau_0, 0, phi0, v0});
             auto dphi_c_sym_array =  phi_sym_array - phi_array(0,_0_N);
 
-            auto n_obj = MX::exp(5*(X(IDX_X_n,Slice())/(path_width_/2)-1)) + MX::exp(5*(X(IDX_X_n,Slice())/(-path_width_/2)-1));
+            auto n_obj = MX::exp(10*(X(IDX_X_n,Slice())/(path_width_/2)-1)) + MX::exp(10*(X(IDX_X_n,Slice())/(-path_width_/2)-1));
             //opti.minimize(MX::sum2(dt_sym_array));
             opti.minimize(1000*MX::sum2(dt_sym_array)+ MX::sum2(n_obj));
             //dynamics
@@ -516,6 +516,17 @@ namespace acsr{
 
             //X_guess(IDX_X_t,all) = tau_array;
             //X_guess(IDX_X_phi,all)=phi_array;
+            X_guess(IDX_X_phi,0) = phi0;
+            for(auto i=1;i<N+1;++i){
+                X_guess(IDX_X_phi,i) = phi_array(i);
+                if(double(phi_array(i))-double(X_guess(IDX_X_phi,i-1))<-pi){
+                    X_guess(IDX_X_phi,i)=X_guess(IDX_X_phi,i)+2*pi;
+                }else if(double(phi_array(i))-double(X_guess(IDX_X_phi,i-1))>pi){
+                    X_guess(IDX_X_phi,i)=X_guess(IDX_X_phi,i)-2*pi;
+                }
+            }
+
+
             X_guess(IDX_X_vx,all)=v0;
 
             //U_guess(0,all) = phi_array(_N_1)-phi_array(_0_N);
