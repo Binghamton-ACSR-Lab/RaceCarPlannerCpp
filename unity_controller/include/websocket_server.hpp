@@ -19,9 +19,8 @@ namespace acsr{
     public:
         WsServer() = default;
 
-        template<class F>
-        void run(F f){
-            server.set_message_handler(std::bind(&WsServer::on_message<F>, this,std::placeholders::_1, std::placeholders::_2,f));
+        void run(std::function<void(json)> f1,std::function<json(json)> f2){
+            server.set_message_handler(std::bind(&WsServer::on_message<std::function<void(json)>,std::function<json(json)>>, this,std::placeholders::_1, std::placeholders::_2,f1,f2));
             server.set_access_channels(websocketpp::log::alevel::all);
             server.set_error_channels(websocketpp::log::elevel::all);
 
@@ -34,8 +33,8 @@ namespace acsr{
     private:
         ws_server_t server;
 
-        template<class F>
-        void on_message(websocketpp::connection_hdl hdl, ws_server_t::message_ptr msg,F f){
+        template<class F1,class F2>
+        void on_message(websocketpp::connection_hdl hdl, ws_server_t::message_ptr msg,F1 f1,F2 f2){
             auto msg_str = msg->get_payload();
             if(msg_str.substr(0,2) != "42"){
                 std::cout<<"message type error\n";
@@ -46,16 +45,19 @@ namespace acsr{
 
             json& data = json_obj[1];
             if(data.contains("waypoints")){
+                f1(data);
+                /*
                 std::vector<double> x = data["waypoints"]["ptsx"];
                 std::vector<double> y = data["waypoints"]["ptsy"];
                 std::ofstream outfile("../data/temp.csv");
                 for(auto i=0;i<x.size();i++)
                     outfile<<std::fixed << std::setprecision(1)<<std::setw(8)<<x[i]<<", "<<std::setw(10)<<y[i]<<std::endl;
                 outfile.close();
-                return;
+                return;*/
+            }else {
+                json s = f2(data);
+                server.send(hdl, R"(42["steer",)" + s.dump() + "]", msg->get_opcode());
             }
-            auto s = f(data);
-            server.send(hdl,R"(42["steer",)" + s.dump() + "]",msg->get_opcode());
         }
     };
 

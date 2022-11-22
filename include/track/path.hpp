@@ -77,7 +77,7 @@ namespace acsr {
             f_tn_to_xy = casadi::Function("tn_to_xy",{t,n},{xy});
 
             auto phi = f_phi(t)[0];
-            auto dm_xy = MX::sym("dm_xy");
+            auto dm_xy = MX::sym("dm_xy",2,1);
             auto dm_n = -MX::sin(phi)*(dm_xy-pt_t_mx)(0) + MX::cos(phi)*(dm_xy-pt_t_mx)(1);
             f_xy_to_tn = casadi::Function("xy_to_tn",{dm_xy,t},{dm_n});
 
@@ -113,18 +113,22 @@ namespace acsr {
             //auto tangent_vec = f_tangent_vec(dm_t)[0];
             //auto xy_on_line = f_xy(dm_t)[0];
 
-            auto t = MX::sym("t",1,ts_vec.size());
-            auto tangent_vec = f_tangent_vec(t)[0];
-            auto xy_on_line = f_xy(t)[0];
+            DM tau_real(1,vec_x.size());
+            for(auto i=0;i<vec_x.size();++i) {
+                auto t = MX::sym("t");
+                auto tangent_vec = f_tangent_vec(t)[0];
+                auto xy_on_line = f_xy(t)[0];
 
-            auto norm_vec = xy-xy_on_line;
-            auto dot_prod = (norm_vec(0,Slice()) - tangent_vec(0,Slice()))*(norm_vec(0,Slice()) - tangent_vec(0,Slice()))+(norm_vec(1,Slice()) - tangent_vec(1,Slice()))*(norm_vec(1,Slice()) - tangent_vec(1,Slice()));
-            auto f = casadi::Function("f",{t},{dot_prod});
-            auto rf = casadi::rootfinder("rf","newton",f);
-            auto t_real = rf(DM(ts_vec))[0];
+                auto norm_vec = xy(Slice(),i) - xy_on_line;
+                auto dot_prod = norm_vec(0) * tangent_vec(0) + norm_vec(1) * tangent_vec(1);
+                auto f = casadi::Function("f", {t}, {dot_prod});
+                auto rf = casadi::rootfinder("rf", "newton", f);
+                auto t_real = rf(DM(ts_vec[i]))[0];
+                tau_real(0,i)=t_real(0);
+            }
 
             //DM n = f_xy_to_tn(DMVector{xy,t_real})[0];
-            return DM(t_real);
+            return tau_real;
 
         }
 

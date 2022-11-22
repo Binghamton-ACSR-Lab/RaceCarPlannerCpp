@@ -31,11 +31,12 @@ namespace acsr {
         template<class T>
         std::vector<T> findNearest(const std::vector<T>& vec_x,const std::vector<T>& vec_y){
             std::vector<value_t> result_n;
-            std::vector<T> t;
+
             auto size = vec_x.size();
             for(auto i=0;i<size;++i) {
-                tree.query(bgi::nearest(point_t(vec_x[i], vec_y[i]), 1), std::back_inserter(result_n));
+                tree.query(bgi::nearest(point_t{vec_x[i], vec_y[i]}, 1), std::back_inserter(result_n));
             }
+            std::vector<T> t(result_n.size());
             std::transform(result_n.begin(),result_n.end(),t.begin(),[](auto& value){
                 return T{value.second};
             });

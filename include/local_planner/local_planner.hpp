@@ -6,7 +6,7 @@
 #define CAR_CONTROL_CPP_REMOTE_CONTROLLER_HPP_
 
 #include "path.hpp"
-#include "../unity_controller/include/websocket_server.hpp"
+#include "include/websocket_server.hpp"
 #include <casadi/casadi.hpp>
 #include "global_trajectory.hpp"
 
@@ -28,21 +28,35 @@ namespace acsr {
     };
 
 
-    class KinematicModelController : AcsrLocalPlanner<4,2> {
+    class BicycleKinematicController : public AcsrLocalPlanner<4,2> {
 
     public:
 
-        KinematicModelController() = default;
+        BicycleKinematicController() = default;
 
-        KinematicModelController(std::shared_ptr<GlobalTrajectory> gloabal_path_ptr, int horizon, double dt):global_path_ptr_(gloabal_path_ptr),horizon_(horizon),dt_(dt){
+        BicycleKinematicController(std::shared_ptr<GlobalTrajectory> gloabal_path_ptr, const json& params,int horizon, double dt):global_path_ptr_(gloabal_path_ptr),horizon_(horizon),dt_(dt){
             x = opti.variable(nx_,horizon_+1);
             u = opti.variable(nu_,horizon_);
+            auto& constraint = params.at("constraint");
+
+            delta_min_ = constraint.at("delta_min");
+            delta_max_ = constraint.at("delta_max");
+            v_min_ = constraint.at("v_min");
+            v_max_ = constraint.at("v_max");
+            d_min_ = constraint.at("d_min");
+            d_max_ = constraint.at("d_max");
+
+            if(params.contains("wheel_base"))
+                wheel_base_ = params.at("wheel_base");
+            else
+                wheel_base_ = double(params.at("lf"))+double(params.at("lr"));
+
         }
 
         std::pair<DM,DM> make_plan(const DM& x0){
             DM ref_state,ref_control;
             auto x_dot = dynamics_model_cartesian<MX>(x(Slice(),Slice(0,-1)),u);
-            std::tie(ref_state,ref_control) = global_path_ptr_->get_reference(x0,horizon_,dt_);
+            std::tie(ref_state,ref_control) = global_path_ptr_->get_reference_cartesian(x0,horizon_,dt_);
 
 
             opti.minimize(5 * MX::dot((x(0, all) - ref_state(0,all)),(x(0, all) - ref_state(0,all)))
@@ -78,31 +92,11 @@ namespace acsr {
             }
         }
 
-        json operator()(const json &value) {
-            double phi0 = value.at("psi");
-            double v0 = value.at("speed");
-            double pt_x0 = value.at("x");
-            double pt_y0 = value.at("y");
-
-            auto x0 = DM::vertcat({pt_x0,pt_y0,phi0,v0});
-            DM sol_x,sol_u;
-            std::tie(sol_x,sol_u) = make_plan(x0);
-            if(sol_x->size()==0){
-                return R"({"foo": "bar"})"_json;
-            }else{
-
-            }
-
-
-        }
-
-
     private:
         const Slice all = casadi::Slice();
         DM dm_waypoints;
         std::shared_ptr<GlobalTrajectory> global_path_ptr_;
-        //std::shared_ptr<Path> path_ptr_;
-        double d_min_, d_max_, delta_min_, delta_max_, lf_, lr_, mass_, Iz,v_min_,v_max_;
+        double d_min_, d_max_, delta_min_, delta_max_, wheel_base_, v_min_,v_max_;
 
 
         casadi::Opti opti;
@@ -129,7 +123,7 @@ namespace acsr {
 
             auto t_dot = vx*T::cos(phi-phi_c+delta)/(T::norm_2(tangent_vec)*(1.0-n*kappa));
             auto n_dot = vx*T::sin(phi-phi_c+delta);
-            auto phi_dot = vx/(lf_+lr_) * T::tan(delta);
+            auto phi_dot = vx/wheel_base_ * T::tan(delta);
             T v_dot;
             if(f==nullptr)
                 v_dot = 7.9*d;
@@ -148,7 +142,7 @@ namespace acsr {
 
             auto pt_x_dot = vx*T::cos(phi);
             auto pt_y_dot = vx*T::sin(phi);
-            auto phi_dot = vx/(lf_+lr_) * T::tan(delta);
+            auto phi_dot = vx/wheel_base_ * T::tan(delta);
             T v_dot;
             if(f==nullptr)
                 v_dot = 7.9*d;

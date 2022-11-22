@@ -148,8 +148,8 @@ int main(int argc, char **argv) {
     //bgi_distance_test();
     //planner_test();
 
-    /*
-    std::string half_track_data_file = "../data/tracks/temp_nwh_half.csv";
+
+    std::string half_track_data_file = "../data/temp.csv";
     auto reader = CSVReader(half_track_data_file);
     auto raw_data = reader.read();
     DM waypoints;
@@ -157,8 +157,13 @@ int main(int argc, char **argv) {
         std::cout<<"Read Track File Fails\n";
     }
     std::cout<<waypoints<<std::endl;
-    acsr::Path path(waypoints,7,50);
-    path.plot();*/
+    acsr::Path path(waypoints);
+
+    DM pt{124.6,31.66};
+    auto tau0 = path.xy2t(pt);
+    auto n0 = path.f_xy_to_tn(DMVector{pt,tau0});
+    std::cout<<n0<<std::endl;
+
 
     //track_test();
 

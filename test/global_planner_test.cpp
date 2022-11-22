@@ -3,10 +3,13 @@
 
 #include "global_planner_optimizer.hpp"
 #include <matplotlibcpp.h>
+#include "nlohmann/json.hpp"
 
 using namespace acsr;
 
 int main(){
+
+    std::string database_file{"../output/global_planner.db"};
     DM waypoints;
     CSVReader reader("../data/temp.csv");
     auto csv_data = reader.read();
@@ -18,30 +21,33 @@ int main(){
     std::cout<<waypoints.rows()<<std::endl;
     auto path_ptr = std::make_shared<Path>(waypoints);
 
-    std::string vehicle_file = "../data/params/racecar.yaml";
+
+    std::string vehicle_file = "../data/params/racecar.json";
     if(!std::filesystem::exists(vehicle_file)){
         std::cout<<vehicle_file<<" does not exist\n";
         return 1;
     }
-
-    param_t vehicle_params;
-    auto vehicle_yaml = YAML::LoadFile(vehicle_file);
-    std::cout<<"load vehicle config file.. Total node: "<<vehicle_yaml.size()<<std::endl;
-    for(auto it = vehicle_yaml.begin();it!=vehicle_yaml.end();++it){
-        vehicle_params[it->first.as<std::string>()]=it->second.as<double>();
-    }
-
+    std::ifstream ifs(vehicle_file);
+    auto vehicle_params = json::parse(ifs);
     double track_width = 10.0;
 
-    int N = 1000;
+    int N = 3000;
 
     BicycleKinematicOptimizer optimizer(path_ptr,track_width,vehicle_params);
-    auto return_value = optimizer.make_plan(0,-1,0.15,N);
+    param_t init{{"s",0.0},{"v",0.15}};
+
+    auto return_value = optimizer.make_plan(init,-1,N);
+
+
 
     if(return_value.first){
         DM dt = std::get<0>(return_value.second);
         DM x = std::get<1>(return_value.second);
         DM u = std::get<2>(return_value.second);
+
+
+        SQLite::Database    db(database_file, SQLite::OPEN_READWRITE|SQLite::OPEN_CREATE);
+        optimizer.save(db, dt,x,u,std::vector<std::string>{"t","n","phi","v"}, std::vector<std::string>{"delta","d"});
 
         std::cout<<x(Slice(0,3),Slice())<<std::endl;
 

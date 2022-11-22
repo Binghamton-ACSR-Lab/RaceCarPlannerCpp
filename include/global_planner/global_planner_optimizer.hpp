@@ -6,7 +6,6 @@
 #define RACECARPLANNER_GLOBAL_PLANNER_OPTIMIZER_HPP
 
 #include "path.hpp"
-#include <yaml-cpp/yaml.h>
 #include <filesystem>
 #include "dynamics.hpp"
 #include "tire_model.hpp"
@@ -14,9 +13,113 @@
 #include <boost/format.hpp>
 #include <filesystem>
 #include <execution>
+#include "nlohmann/json.hpp"
+#include "db_manager.hpp"
 
 namespace acsr{
     using param_t = std::map<std::string,double>;
+    using json = nlohmann::json;
+
+
+    template<int nx,int nu>
+    class AcsrGlobalPlanner{
+    public:
+        static constexpr int nx_ = nx;
+        static constexpr int nu_ = nu;
+
+
+        AcsrGlobalPlanner()=default;
+
+
+        virtual std::pair<bool,std::tuple<DM,DM,DM>> make_plan(const param_t & init, double length, int N , bool print) = 0;
+
+        virtual std::string save(DbManager &db_manager, DM& dt_array,DM& x,DM& u,const std::vector<std::string>& x_headers={},const std::vector<std::string>& u_headers={}){
+            //std::cout << "Save data to SQLite database file '" << db.getFilename().c_str() << "\n";
+            const auto now = std::chrono::system_clock::now();
+            time_t rawtime;
+            struct tm * timeinfo;
+            char buffer[40];
+            time (&rawtime);
+            timeinfo = localtime(&rawtime);
+            strftime(buffer,sizeof(buffer),"_%d_%H_%M_%S",timeinfo);
+            auto datatable_name = std::string(buffer);
+
+            auto local_x_header = x_headers;
+            auto local_u_header = u_headers;
+            if(local_x_header.size()<nx_){
+                for (int i = 0; i < nx_; ++i) {
+                    local_x_header.push_back("x_"+std::to_string(i));
+                }
+            }
+            if(local_u_header.size()<nu_){
+                for (int i = 0; i < nu_; ++i) {
+                    local_u_header.push_back("u_"+std::to_string(i));
+                }
+            }
+
+            db_manager.add_sql("DROP TABLE IF EXISTS " + datatable_name);
+
+            std::ostringstream os;
+            os<<"create table if not exists "<<datatable_name<<"(id INTEGER PRIMARY KEY AUTOINCREMENT, dt REAL ";
+            for (int i = 0; i < nx_; ++i) {
+                os<<","<<local_x_header[i]<<" REAL";
+            }
+
+            for (int i = 0; i < nu_; ++i) {
+                os<<","<<local_u_header[i]<<" REAL";
+            }
+            os<<")";
+            db_manager.add_sql(os.str());
+
+            std::ostringstream os1;
+            os1 << "INSERT INTO "<<datatable_name<<" (dt";
+            for (int i = 0; i < nx_; ++i) {
+                os1<<","<<local_x_header[i];
+            }
+            for (int i = 0; i < nu_; ++i) {
+                os1<<","<<local_u_header[i];
+            }
+            os1 <<") VALUES(";
+            auto init_string = os1.str();
+            //insert data rows
+            auto N = x.columns()-1;
+            int divider = N/10;
+            std::vector<std::string> vec;
+            for(auto i=0;i<N;++i){
+                if(i%divider==0){
+                    std::cout<<"Saving data... "<<i*10/divider<<"% finished"<<std::endl;
+                }
+                std::ostringstream os;
+                os<<double(dt_array(0,i));
+
+                for(auto j=0;j<nx_;++j){
+                    os<<","<<double(x(j,i));
+                }
+                for(auto j=0;j<nu_;++j){
+                    os<<","<<double(u(0,i));
+                }
+                os<<")";
+                vec.push_back(init_string+os.str());
+            }
+
+            std::ostringstream os2;
+            os2 << "INSERT INTO "<<datatable_name<<" ("<<local_x_header[0];
+            for (int i = 1; i < nx_; ++i) {
+                os2<<","<<local_x_header[i];
+            }
+            os2 <<") VALUES("<<double(x(0,N));
+
+            for(auto j=1;j<nx_;++j){
+                os2<<","<<double(x(j,N));
+            }
+            os2<<")";
+            vec.push_back(os2.str());
+            db_manager.add_sql(vec.begin(),vec.end());
+
+            std::cout<<"save to database finished\n";
+            return datatable_name;
+        }
+    };
 
     template<class valid_checker_t=void>
     class BicycleDynamicsTwoBrakeOptimizer{
@@ -395,35 +498,38 @@ namespace acsr{
 
 
 
-    class BicycleKinematicOptimizer{
+    class BicycleKinematicOptimizer:public AcsrGlobalPlanner<4,2>{
     public:
         BicycleKinematicOptimizer() = default;
 
-        explicit BicycleKinematicOptimizer(std::shared_ptr<Path> path_ptr,
+        BicycleKinematicOptimizer(std::shared_ptr<Path> path_ptr,
                                            double path_width,
-                                           const param_t & vehicle_params)
+                                           const json & params)
                 :path_width_(path_width),path_ptr_(path_ptr){
 
-            option_["max_iter"] = 30000;
+            option_["max_iter"] = 3000;
             option_["tol"]=1e-9;
             option_["linear_solver"]="ma57";
 
 
-            delta_min_ = vehicle_params.at("delta_min");
-            delta_max_ = vehicle_params.at("delta_max");
-            v_min_ = vehicle_params.at("v_min");
-            v_max_ = vehicle_params.at("v_max");
-            a_min_ = vehicle_params.at("d_min");
-            a_max_ = vehicle_params.at("d_max");
+            auto& constraint = params.at("constraint");
 
-            if(vehicle_params.find("wheel_base")!=vehicle_params.end())
-                wheel_base_ = vehicle_params.at("wheel_base");
+            delta_min_ = constraint.at("delta_min");
+            delta_max_ = constraint.at("delta_max");
+            v_min_ = constraint.at("v_min");
+            v_max_ = constraint.at("v_max");
+            d_min_ = constraint.at("d_min");
+            d_max_ = constraint.at("d_max");
+
+
+            if(params.contains("wheel_base"))
+                wheel_base_ = params.at("wheel_base");
             else
-                wheel_base_ = vehicle_params.at("lf")+vehicle_params.at("lr");
+                wheel_base_ = double(params.at("lf"))+double(params.at("lr"));
 
         }
 
-        std::pair<bool,std::tuple<DM,DM,DM>> make_plan(double s0 =0, double st=-1, double v0=0.15, int N =100, bool print = true){
+        std::pair<bool,std::tuple<DM,DM,DM>> make_plan(const param_t & init, double length =-1, int N =100, bool print = true){
 
 
             auto all = Slice();
@@ -437,14 +543,37 @@ namespace acsr{
                 option_["print_level"]=1;
             }
 
-            if(st<=s0){
-                st = path_ptr_->get_max_length();
+            double tau_0,s0,st,phi0,v0;
+            if(init.find("t")!=init.end()){
+                tau_0 = init.at("t");
+                s0 = double(path_ptr_->t_to_s_lookup(DM{tau_0})[0]);
+            }else{
+                s0 = init.at("s");
+                tau_0 = double(path_ptr_->s_to_t_lookup(DM{s0})[0]);
             }
-            auto tau_0 = path_ptr_->s_to_t_lookup(DM{s0})[0];
-            //auto tau_t = path_ptr_->t_to_s_lookup(DM{tau_t})[0];
+
+            if(init.find("phi")!=init.end()){
+                phi0=init.at("phi");
+            }else{
+                phi0 = double(path_ptr_->f_phi(DM{tau_0})[0]);
+            }
+
+            if(init.find("v")!=init.end()){
+                v0=init.at("v");
+            }else{
+                v0 = 0.15;
+            }
+
+            if(length<=0){
+                st = path_ptr_->get_max_length();
+            }else{
+                st = s0+length;
+                st=std::min(st,path_ptr_->get_max_length());
+            }
+
             const auto s_array = casadi::DM::linspace(s0,st,N+1).T();
             const auto tau_array = path_ptr_->s_to_t_lookup(s_array)[0];
-            auto phi0 = double(path_ptr_->f_phi(DM{tau_0})[0]);
+
 
             //auto tau_array_mid = path_ptr_->s_to_t_lookup((s_val(0,_0_N)+s_val(0,_N_1))*0.5)[0];
 
@@ -459,8 +588,8 @@ namespace acsr{
             auto tangent_vec_norm = DM::sqrt((tangent_vec_array(0,all)*tangent_vec_array(0,all)+tangent_vec_array(1,all)*tangent_vec_array(1,all)));
 
             casadi::Opti opti;
-            auto X = opti.variable(nx,N+1);
-            auto U = opti.variable(nu, N);
+            auto X = opti.variable(nx_,N+1);
+            auto U = opti.variable(nu_, N);
             auto dt_sym_array = opti.variable(1,N);
 
             auto n_sym_array = X(IDX_X_n,_0_N);
@@ -470,7 +599,7 @@ namespace acsr{
             auto vx_sym_array = (X(IDX_X_vx,_0_N)+X(IDX_X_vx,_N_1))*0.5;
 
             auto delta_sym_array = U(IDX_U_delta,all);
-            auto a_sym_array = U(IDX_U_a,all);
+            auto d_sym_array = U(IDX_U_a,all);
 
 
 
@@ -480,8 +609,8 @@ namespace acsr{
             auto n_obj = MX::exp(10*(X(IDX_X_n,Slice())/(path_width_/2)-1)) + MX::exp(10*(X(IDX_X_n,Slice())/(-path_width_/2)-1));
             //opti.minimize(MX::sum2(dt_sym_array));
             opti.minimize(1000*MX::sum2(dt_sym_array)+ MX::sum2(n_obj));
-            //dynamics
 
+            //dynamics
             opti.subject_to(X(IDX_X_t, _N_1) == X(IDX_X_t, _0_N) + dt_sym_array * (vx_sym_array * MX::cos(dphi_c_sym_array))/(tangent_vec_norm(0,_0_N)*(1-n_sym_array*kappa_array(0,_0_N))));
             opti.subject_to(X(IDX_X_n, _N_1) == X(IDX_X_n, _0_N) + dt_sym_array * (vx_sym_array * MX::sin(dphi_c_sym_array)));
             opti.subject_to(X(IDX_X_phi, _N_1) == X(IDX_X_phi, _0_N) + dt_sym_array * vx_sym_array * MX::tan(delta_sym_array)/wheel_base_);
@@ -489,12 +618,12 @@ namespace acsr{
             //opti.subject_to(X(IDX_X_n, _N_1) == X(IDX_X_n, _0_N) + dt_sym_array * (vx_sym_array * (MX::sin(phi_sym_array)*cos_phi_array-MX::cos(phi_sym_array)*sin_phi_array)));
 
             //opti.subject_to(X(IDX_X_phi, _N_1) == X(IDX_X_phi, _0_N) + dt_sym_array * vx_sym_array * delta_sym_array/wheel_base_);
-            opti.subject_to(X(IDX_X_vx, _N_1) == X(IDX_X_vx, _0_N) + dt_sym_array * a_sym_array);
+            opti.subject_to(X(IDX_X_vx, _N_1) == X(IDX_X_vx, _0_N) + dt_sym_array * (7.9*d_sym_array-0.5*vx_sym_array));
 
             //inital conditions
             opti.subject_to(X(0, all) == tau_array);
             opti.subject_to(X(all, 0) == X0);
-            opti.subject_to(dt_sym_array >0);
+            opti.subject_to(dt_sym_array >0.0001);
 
             //state boundary
             //opti.subject_to(opti.bounded(-path_width_/2, X(IDX_X_n,_0_N), path_width_/2));
@@ -502,19 +631,18 @@ namespace acsr{
 
 
             //control boundary
-            opti.subject_to(opti.bounded(a_min_, a_sym_array, a_max_));
+            opti.subject_to(opti.bounded(d_min_, d_sym_array, d_max_));
             opti.subject_to(opti.bounded(delta_min_, delta_sym_array, delta_max_));
 
 
-            auto X_guess = casadi::DM::zeros(nx,N+1);
-            auto U_guess = casadi::DM::zeros(nu,N);
+            auto X_guess = casadi::DM::zeros(nx_,N+1);
+            auto U_guess = casadi::DM::zeros(nu_,N);
 
 
-            //for(auto i=0;i<N+1;++i)
-            //    X_guess(Slice(), i) = X0;
 
+            X_guess(Slice(), 0) = X0;
             //X_guess(IDX_X_t,all) = tau_array;
-            //X_guess(IDX_X_phi,all)=phi_array;
+
             X_guess(IDX_X_phi,0) = phi0;
             for(auto i=1;i<N+1;++i){
                 X_guess(IDX_X_phi,i) = phi_array(i);
@@ -527,8 +655,6 @@ namespace acsr{
 
 
             X_guess(IDX_X_vx,all)=v0;
-
-            //U_guess(0,all) = phi_array(_N_1)-phi_array(_0_N);
 
             opti.set_initial(X, X_guess);
             opti.set_initial(U, U_guess);
@@ -551,8 +677,6 @@ namespace acsr{
         }
 
     public:
-        constexpr static int nx = 4;
-        constexpr static int nu = 2;
         constexpr static unsigned IDX_X_t = 0;
         constexpr static unsigned IDX_X_n = 1;
         constexpr static unsigned IDX_X_phi = 2;
@@ -563,11 +687,8 @@ namespace acsr{
     private:
         std::shared_ptr<Path> path_ptr_;
         double path_width_{};
-
         Dict option_;
-
-        double delta_min_,delta_max_,v_min_,v_max_,a_min_,a_max_,wheel_base_;
-
+        double delta_min_,delta_max_,v_min_,v_max_,d_min_,d_max_,wheel_base_;
 
     };
 

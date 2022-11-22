@@ -1,0 +1,37 @@
+{
+  "mass": 1485,
+  "lf": 1.307,
+  "lr": 1.35,
+  "Iz": 2196,
+  "width": 1.7,
+  "throttle": {
+    "Cm1": 0.3,
+    "Cm2": 30,
+    "Cm0": 500,
+    "Cd": 6000,
+    "Cbf": 7000,
+    "Cbr": 7000
+  },
+  "wheel": {
+    "front": {
+      "radius": 0.34,
+      "mass": 40
+    },
+    "rear": {
+      "radius": 0.356,
+      "mass": 40
+    }
+  },
+  "constraint": {
+    "d_max": 1.0,
+    "d_min": 0.0,
+    "v_max": 100.0,
+    "v_min": 0.1,
+    "delta_min": -0.436,
+    "delta_max": 0.436,
+    "delta_dot_min": -1,
+    "delta_dot_max": 1
+  }
+
+
+}
