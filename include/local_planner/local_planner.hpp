@@ -9,6 +9,7 @@
 #include "include/websocket_server.hpp"
 #include <casadi/casadi.hpp>
 #include "global_trajectory.hpp"
+#include "db_manager.hpp"
 
 using json = nlohmann::json;
 using std::string;
@@ -24,6 +25,94 @@ namespace acsr {
         AcsrLocalPlanner()=default;
 
         virtual std::pair<DM,DM> make_plan(const DM& x0) =0;
+
+
+        virtual std::string save(DbManager &db_manager, DM& x,DM& u,const std::vector<std::string>& x_headers={},const std::vector<std::string>& u_headers={}){
+            //std::cout << "Save data to SQLite database file '" << db.getFilename().c_str() << "\n";
+            const auto now = std::chrono::system_clock::now();
+            time_t rawtime;
+            struct tm * timeinfo;
+            char buffer[40];
+            time (&rawtime);
+            timeinfo = localtime(&rawtime);
+            strftime(buffer,sizeof(buffer),"_%d_%H_%M_%S",timeinfo);
+            auto datatable_name = std::string(buffer);
+
+            auto local_x_header = x_headers;
+            auto local_u_header = u_headers;
+            if(local_x_header.size()<nx_){
+                for (int i = 0; i < nx_; ++i) {
+                    local_x_header.push_back("x_"+std::to_string(i));
+                }
+            }
+            if(local_u_header.size()<nu_){
+                for (int i = 0; i < nu_; ++i) {
+                    local_u_header.push_back("u_"+std::to_string(i));
+                }
+            }
+
+            db_manager.add_sql("DROP TABLE IF EXISTS " + datatable_name);
+
+            std::ostringstream os;
+            os<<"create table if not exists "<<datatable_name<<"(id INTEGER PRIMARY KEY AUTOINCREMENT, dt REAL ";
+            for (int i = 0; i < nx_; ++i) {
+                os<<","<<local_x_header[i]<<" REAL";
+            }
+
+            for (int i = 0; i < nu_; ++i) {
+                os<<","<<local_u_header[i]<<" REAL";
+            }
+            os<<")";
+            db_manager.add_sql(os.str());
+
+            std::ostringstream os1;
+            os1 << "INSERT INTO "<<datatable_name<<" (dt";
+            for (int i = 0; i < nx_; ++i) {
+                os1<<","<<local_x_header[i];
+            }
+            for (int i = 0; i < nu_; ++i) {
+                os1<<","<<local_u_header[i];
+            }
+            os1 <<") VALUES(";
+            auto init_string = os1.str();
+            //insert data rows
+            auto N = x.columns()-1;
+            int divider = N/10;
+            std::vector<std::string> vec;
+            for(auto i=0;i<N;++i){
+                if(i%divider==0){
+                    std::cout<<"Saving data... "<<i*10/divider<<"% finished"<<std::endl;
+                }
+                std::ostringstream os;
+                os<<double(dt_array(0,i));
+
+                for(auto j=0;j<nx_;++j){
+                    os<<","<<double(x(j,i));
+                }
+                for(auto j=0;j<nu_;++j){
+                    os<<","<<double(u(0,i));
+                }
+                os<<")";
+                vec.push_back(init_string+os.str());
+            }
+
+            std::ostringstream os2;
+            os2 << "INSERT INTO "<<datatable_name<<" ("<<local_x_header[0];
+            for (int i = 1; i < nx_; ++i) {
+                os2<<","<<local_x_header[i];
+            }
+            os2 <<") VALUES("<<double(x(0,N));
+
+            for(auto j=1;j<nx_;++j){
+                os2<<","<<double(x(j,N));
+            }
+            os2<<")";
+            vec.push_back(os2.str());
+            db_manager.add_sql(vec.begin(),vec.end());
+
+            std::cout<<"save to database finished\n";
+            return datatable_name;
+        }
 
     };
 

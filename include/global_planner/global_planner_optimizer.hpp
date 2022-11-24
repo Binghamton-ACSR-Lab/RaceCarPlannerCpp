@@ -375,7 +375,7 @@ namespace acsr{
         constexpr static unsigned IDX_U_Rb = 3;
 
 
-
+        /*
         void save(DM& dt_array,DM& x,DM& u){
             SQLite::Database    db(database_file_, SQLite::OPEN_READWRITE|SQLite::OPEN_CREATE);
             std::cout << "SQLite database file '" << db.getFilename().c_str() << "' opened successfully\n";
@@ -490,7 +490,7 @@ namespace acsr{
             }
             std::cout<<"save to database finished\n";
 
-        }
+        }*/
 
     };
 
