@@ -53,17 +53,17 @@ namespace acsr {
             f_t_to_control = interpolant("t_to_control","linear",std::vector<std::vector<double>>{dt_vec},std::vector<double>{control->begin(),control->end()});
         }
 
-        std::pair<DM,DM> get_reference_cartesian(const DM& start_state, int horizon,double dt,bool start_start_cartesian=true){
+        std::pair<DM,DM> get_reference_cartesian(const DM& start_state, int horizon,double dt,bool start_state_cartesian=true){
             DM tau0;
-            if(start_start_cartesian) {
+            if(start_state_cartesian) {
                 tau0 = path_ptr_->xy2t(start_state(Slice(0, 2)));
             }else{
                 tau0 = start_state(0);
             }
             auto t0 = f_tau_to_t(tau0)[0];
-            auto t_vec = DM::linspace(t0,t0 + horizon*dt,horizon+1);
+            auto t_vec = DM::linspace(t0,t0 + horizon*dt,horizon+1).T();
             auto state = f_t_to_state(t_vec)[0];
-            auto xy = path_ptr_->f_tn_to_xy(DMVector{state(0,Slice()),state(1,Slice())});
+            auto xy = path_ptr_->f_tn_to_xy(DMVector{state(0,Slice()),state(1,Slice())})[0];
             state(Slice(0,2),Slice()) = xy;
             return std::make_pair(state,f_t_to_control(t_vec)[0]);
         }

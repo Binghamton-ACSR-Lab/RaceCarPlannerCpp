@@ -14,8 +14,9 @@ namespace acsr {
     template<class GlobalPlanner=BicycleKinematicOptimizer,class LocalPlanner=BicycleKinematicController>
     struct UnityController {
 
-        UnityController(bool save_global_data=true,bool save_local_data=true,std::string database_file = "../output/global_planner.db")
-            :db_manager(database_file){
+        UnityController(double estimated_dt = 0.1, bool save_global_data=true,bool save_local_data=true,std::string database_file = "../output/global_planner.db")
+            :db_manager(database_file),estimated_dt_(estimated_dt),save_global_data_(save_global_data),save_local_data_(save_global_data),
+             server(0.1){
 
         }
 
@@ -25,50 +26,39 @@ namespace acsr {
                        std::bind(&UnityController::data_processor, this, std::placeholders::_1));
         }
 
-        void waypoints_processor(const json &value){
-            std::vector<double> waypoint_x = value["waypoints"]["ptsx"];
-            std::vector<double> waypoint_y = value["waypoints"]["ptsy"];
+        json waypoints_processor(const json &value){
+            auto& wapoints_json = value.at("waypoints");
+            auto& pose=value.at("pose");
 
-            double pt_x = value["pose"]["x"];
-            double pt_y = value["pose"]["y"];
-            double phi=value["pose"]["psi"];
+            std::vector<double> waypoint_x = wapoints_json.at("ptsx");
+            std::vector<double> waypoint_y = wapoints_json.at("ptsy");
+
+            double pt_x = pose.at("x");
+            double pt_y = pose.at("y");
+            double phi=pose.at("psi");
 
             waypoints = DM(std::vector<std::vector<double>>{waypoint_x,waypoint_y});
-            std::ofstream outfile("../data/temp.csv");
 
+            std::async(std::launch::deferred,[&waypoint_x,&waypoint_y](){
+                std::ofstream outfile("../data/temp.csv");
+                for(auto i=0;i<waypoint_x.size();i++)
+                    outfile<<std::fixed << std::setprecision(1)<<std::setw(8)<<waypoint_x[i]<<", "<<std::setw(10)<<waypoint_y[i]<<std::endl;
+                outfile.close();
+            });
 
-            for(auto i=0;i<waypoint_x.size();i++)
-                outfile<<std::fixed << std::setprecision(1)<<std::setw(8)<<waypoint_x[i]<<", "<<std::setw(10)<<waypoint_y[i]<<std::endl;
-            outfile.close();
 
             path_ptr_ = std::make_shared<Path>(waypoints);
-
-
-
             //std::string database_file{"../output/global_planner.db"};
             std::string vehicle_file = "../data/params/racecar.json";
             if(!std::filesystem::exists(vehicle_file)){
                 std::cout<<vehicle_file<<" does not exist\n";
-                return;
+                return R"({"foo": "bar"})"_json;
             }
             std::ifstream ifs(vehicle_file);
             auto vehicle_params = json::parse(ifs);
-            /*std::string vehicle_file = "../data/params/racecar.yaml";
-            if(!std::filesystem::exists(vehicle_file)){
-                std::cout<<vehicle_file<<" does not exist\n";
-                return;
-            }
 
-            param_t vehicle_params;
-            auto vehicle_yaml = YAML::LoadFile(vehicle_file);
-            std::cout<<"load vehicle config file.. Total node: "<<vehicle_yaml.size()<<std::endl;
-            for(auto it = vehicle_yaml.begin();it!=vehicle_yaml.end();++it){
-                vehicle_params[it->first.as<std::string>()]=it->second.as<double>();
-            }*/
-
-            double track_width = value["track_width"];
+            double track_width = value.at("track_width");
             int N = 1000;
-
             GlobalPlanner optimizer(path_ptr_,track_width,vehicle_params);
 
             auto dm_pt = DM{pt_x,pt_y};
@@ -85,29 +75,58 @@ namespace acsr {
                 global_trajectory_ptr_ = std::make_shared<GlobalTrajectory>(path_ptr_,dt,x,u);
 
                 local_planner_ptr_ = std::make_shared<LocalPlanner>(global_trajectory_ptr_, vehicle_params,10, 0.1);
+
+                std::future<void> save_data_thread;
+
                 if(save_global_data_){
-                    optimizer.save(db_manager, dt,x,u);//,std::vector<std::string>{"t","n","phi","v"}, std::vector<std::string>{"delta","d"});
+                    save_data_thread = std::async(std::launch::async,[&](){
+                        optimizer.save(db_manager, dt,x,u);
+                    });
                 }
+
+
+                auto ref_dm = path_ptr_->f_tn_to_xy(DMVector{x(0,Slice()),x(1,Slice())})[0];
+                auto ref_x = ref_dm(0,Slice());
+                auto ref_y = ref_dm(1,Slice());
+                json j;
+                j["ref_x"] = std::vector(ref_x->begin(),ref_x->end());
+                j["ref_y"] = std::vector(ref_y->begin(),ref_y->end());
+                if(save_global_data_){
+                    save_data_thread.wait();
+                }
+                return j;
             }
 
-
+            return R"({"foo": "bar"})"_json;
         }
 
         json data_processor(const json &value){
-            std::cout<<value<<std::endl;
-            /*
-            received_phi = float(telemetry['psi'])
-            received_ptx = float(telemetry['x'])
-            received_pty = float(telemetry['y'])
-            received_vx = float(telemetry['vx'])
-            received_vy = float(telemetry['vy'])*/
-            return R"({"foo": "bar"})"_json;
+            //std::cout<<value<<std::endl;
+            DM x0 = DM{value.at("x"),value.at("y"),value.at("psi"),value.at("vx")};
+            //std::cout<<"received_x0"<<x0<<std::endl;
+            auto estimate_state = x0 + estimated_dt_ * local_planner_ptr_->dynamics_model_cartesian(x0,sent_control);
+            //std::cout<<"estimated_x0"<<estimate_state<<std::endl;
+
+            DM x,u;
+            auto local_planner = local_planner_ptr_->make_plan(estimate_state);
+            if(local_planner.first) {
+                x = local_planner.second.first;
+                u = local_planner.second.second;
+                sent_control = u(Slice(), 0);
+            }else{
+                return R"({"foo": "bar"})"_json;
+            }
+
+            json j;
+            auto mpc_x = x(0,Slice());
+            auto mpc_y = x(1,Slice());
+            j["mpc_x"] = std::vector(mpc_x->begin(),mpc_x->end());
+            j["mpc_y"] = std::vector(mpc_y->begin(),mpc_y->end());
+            j["throttle"] = double(u(1,0));
+            j["steering_angle"] = double(u(0,0));
+            return j;
 
         }
-
-
-
-
 
     private:
         WsServer server;
@@ -118,6 +137,9 @@ namespace acsr {
         bool save_global_data_,save_local_data_;
         //SQLite::Database    db_;
         DbManager db_manager;
+        double estimated_dt_;
+
+        DM sent_control=DM::zeros(LocalPlanner::nu_);
 
 
 

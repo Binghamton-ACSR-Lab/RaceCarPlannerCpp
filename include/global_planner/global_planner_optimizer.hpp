@@ -310,7 +310,7 @@ namespace acsr{
                 auto sol_x = sol.value(X);
                 auto sol_u = sol.value(U);
                 if(save_to_database_){
-                    save(dt_array,sol_x,sol_u);
+                    //save(dt_array,sol_x,sol_u);
                 }
                 return std::make_pair(true,std::make_tuple(dt_array,sol_x,sol_u));
             }
@@ -618,7 +618,7 @@ namespace acsr{
             //opti.subject_to(X(IDX_X_n, _N_1) == X(IDX_X_n, _0_N) + dt_sym_array * (vx_sym_array * (MX::sin(phi_sym_array)*cos_phi_array-MX::cos(phi_sym_array)*sin_phi_array)));
 
             //opti.subject_to(X(IDX_X_phi, _N_1) == X(IDX_X_phi, _0_N) + dt_sym_array * vx_sym_array * delta_sym_array/wheel_base_);
-            opti.subject_to(X(IDX_X_vx, _N_1) == X(IDX_X_vx, _0_N) + dt_sym_array * (7.9*d_sym_array-0.5*vx_sym_array));
+            opti.subject_to(X(IDX_X_vx, _N_1) == X(IDX_X_vx, _0_N) + dt_sym_array * (7.9*d_sym_array-0.3*vx_sym_array));
 
             //inital conditions
             opti.subject_to(X(0, all) == tau_array);
