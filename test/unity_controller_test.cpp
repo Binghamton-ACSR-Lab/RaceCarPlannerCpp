@@ -6,7 +6,7 @@
 
 using namespace acsr;
 int main(){
-    UnityController controller;
+    UnityController<acsr::BicycleDynamicsTwoBrakeOptimizer<PacejkaSimpleModel>> controller;
     controller.run();
 
 }

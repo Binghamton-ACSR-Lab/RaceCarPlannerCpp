@@ -5,6 +5,9 @@
 #ifndef RACECARPLANNER_TIRE_MODEL_HPP
 #define RACECARPLANNER_TIRE_MODEL_HPP
 #include <casadi/casadi.hpp>
+#include <nlohmann/json.hpp>
+
+using nlohmann::json;
 
 namespace acsr{
 
@@ -57,6 +60,15 @@ namespace acsr{
             B_lat = param.at("B_lat");
             C_lat = param.at("C_lat");
             D_lat = param.at("D_lat");
+        }
+
+        PacejkaSimpleModel(const json& param){
+            B_long = param.at("longitudinal").at("B");
+            C_long = param.at("longitudinal").at("C");
+            D_long = param.at("longitudinal").at("D");
+            B_lat = param.at("lateral").at("B");
+            C_lat = param.at("lateral").at("C");
+            D_lat = param.at("lateral").at("D");
         }
 
         template<class T>

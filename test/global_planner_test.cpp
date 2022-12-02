@@ -4,11 +4,15 @@
 #include "global_planner_optimizer.hpp"
 #include <matplotlibcpp.h>
 #include "nlohmann/json.hpp"
-
+#include "global_planner_plot.hpp"
 using namespace acsr;
 
 int main(){
+    GlobalPlannerPlotter<7,4,3,4> plotter;
+    plotter.plot(10);
 
+
+    /*
     std::string database_file{"../output/global_planner.db"};
     DM waypoints;
     CSVReader reader("../data/temp.csv");
@@ -82,7 +86,7 @@ int main(){
 
         plt::show();
 
-    }
+    }*/
 
 }
 

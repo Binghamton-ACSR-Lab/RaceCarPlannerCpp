@@ -86,6 +86,10 @@ namespace acsr {
             return path_ptr_;
         }
 
+        DM get_t_vec() const{
+            return dt_;
+        }
+
     public:
         Function f_tau_to_t;
         Function f_t_to_tau;

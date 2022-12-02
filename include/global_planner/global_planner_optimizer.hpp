@@ -121,66 +121,55 @@ namespace acsr{
         }
     };
 
-    template<class valid_checker_t=void>
-    class BicycleDynamicsTwoBrakeOptimizer{
+
+    template<class TireModel = PacejkaSimpleModel>
+    class BicycleDynamicsTwoBrakeOptimizer : public AcsrGlobalPlanner<7,4>{
     public:
         BicycleDynamicsTwoBrakeOptimizer() = default;
 
         explicit BicycleDynamicsTwoBrakeOptimizer(std::shared_ptr<Path> path_ptr,
-                                         double path_width,
-                                         const param_t & vehicle_params,
-                                         const param_t & front_tire_params,
-                                         const param_t & rear_tire_params,
+                                         double path_width, const json & params)/*,
                                          int optimization_resolution = 100,
-                                         std::shared_ptr<valid_checker_t> valid_checker=nullptr)
-                :vehicle_params_(vehicle_params),path_width_(path_width),front_tire_params_(front_tire_params),rear_tire_params_(rear_tire_params),N_(optimization_resolution),path_(path_ptr){
+                                         std::shared_ptr<valid_checker_t> valid_checker=nullptr)*/
+                :path_width_(path_width),path_ptr_(path_ptr){
 
-            option_["max_iter"] = 3000;
+            option_["max_iter"] = 30000;
             option_["tol"]=1e-6;
             option_["linear_solver"]="ma57";
 
+            front_tire_model_ = std::make_shared<TireModel>(params.at("tire").at("front"));
+            rear_tire_model_ = std::make_shared<TireModel>(params.at("tire").at("rear"));
 
-            if(std::is_void<valid_checker_t>::value || valid_checker== nullptr){
-                road_constraint_upper_bound_=DM{path_width/2};
-                road_constraint_lower_bound_=DM{-path_width/2};
-            }else{
-                std::vector<size_t> index_vect(N_+1);
-                std::iota(index_vect.begin(),index_vect.end(),0);
 
-                auto s = DM::linspace(0,path_->get_max_length(),N_+1);
-                s = s.T();
-                auto t = path_->s_to_t_lookup(s)[0];
-                auto n = DM::zeros(1,N_+1);
-                auto center_line = path_->f_tn_to_xy(DMVector {t,n})[0];
+            cd_ =params.at("throttle").at("Cd");
+            cm0_ = params.at("throttle").at("Cm0");
+            cm1_ = params.at("throttle").at("Cm1");
+            cm2_ = params.at("throttle").at("Cm2");
+            cbf_ = params.at("throttle").at("Cbf");
+            cbr_ = params.at("throttle").at("Cbr");
 
-                road_constraint_upper_bound_=path_width/2*DM::ones(1,N_+1);
-                road_constraint_lower_bound_=-path_width/2*DM::ones(1,N_+1);
+            lf_ = params.at("lf");
+            lr_ = params.at("lr");
+            mass_ = params.at("mass");
+            Iz_ = params.at("Iz");
 
-                std::for_each(std::execution::par,index_vect.begin(),index_vect.end(),[&](size_t idx){
-                    std::vector<std::pair<double,DM>> result = valid_checker->template near_collides<DM>(path_width/2,double(center_line(0,idx)),double(center_line(1,idx)));
-                    for(auto& r: result){
-                        auto n = path_->f_xy_to_tn(DMVector{r.second,t(0,idx)})[0](0);
-                        if(double(n(0))<0 && -r.first>double(road_constraint_lower_bound_(0,idx))){
-                            road_constraint_lower_bound_(0,idx)=-r.first;
-                        }else if(double(n(0))>0 && r.first<double(road_constraint_upper_bound_(0,idx))){
-                            road_constraint_upper_bound_(0,idx) = r.first;
-                        }
-                    }
-                });
-
-                if(path_width/2 - double(DM::mmin(road_constraint_upper_bound_))<0.1 && path_width/2 + double(DM::mmax(road_constraint_upper_bound_))<0.1){
-                    road_constraint_upper_bound_=DM{path_width/2};
-                    road_constraint_lower_bound_=DM{-path_width/2};
-                }
-
-            }
-
+            //const auto track_width = path_->get_width();
+            v_min_ = params.at("constraint").at("v_min");
+            v_max_ = params.at("constraint").at("v_max");
+            d_min_ = params.at("constraint").at("d_min");
+            d_max_ = params.at("constraint").at("d_max");
+            delta_min_ = params.at("constraint").at("delta_min");
+            delta_max_ = params.at("constraint").at("delta_max");
+            delta_dot_min_ = params.at("constraint").at("delta_dot_min");
+            delta_dot_max_ = params.at("constraint").at("delta_dot_max");
         }
 
-        std::pair<bool,std::tuple<DM,DM,DM>> make_plan(double n0 =0, double v0=0.15,bool print = true){
+        std::pair<bool,std::tuple<DM,DM,DM>> make_plan(const param_t & init, double length =-1, int N =1000, bool print = true){
+        //std::pair<bool,std::tuple<DM,DM,DM>> make_plan(double n0 =0, double v0=0.15,bool print = true){
             auto all = Slice();
-            auto _0_N = Slice(0,N_);
-            auto _N_1 = Slice(1,N_+1);
+            auto _0_N = Slice(0,N);
+            auto _N_1 = Slice(1,N+1);
+
             Dict casadi_option;
             casadi_option["print_time"]=print;
             if(print){
@@ -189,52 +178,60 @@ namespace acsr{
                 option_["print_level"]=1;
             }
 
-            auto front_tire_model = std::make_shared<PacejkaSimpleModel>(front_tire_params_);
-            auto rear_tire_model = std::make_shared<PacejkaSimpleModel>(rear_tire_params_);
+            const auto Fz = casadi::DM::ones(2) * mass_ / 2 * 9.81;
 
-            const auto cd =vehicle_params_.at("Cd");
-            const auto cm0 = vehicle_params_.at("Cm0");
-            const auto cm1 = vehicle_params_.at("Cm1");
-            const auto cm2 = vehicle_params_.at("Cm2");
-            const auto cbf = vehicle_params_.at("Cbf");
-            const auto cbr = vehicle_params_.at("Cbr");
-            const auto lf = vehicle_params_.at("lf");
-            const auto lr = vehicle_params_.at("lr");
-            const auto mass = vehicle_params_.at("m");
-            const auto Iz = vehicle_params_.at("Iz");
-            const auto Fz = casadi::DM::ones(2) * vehicle_params_.at("m") / 2 * 9.81;
+            double tau0,s0,st,phi0,v0,n0;
+            if(init.find("t")!=init.end()){
+                tau0 = init.at("t");
+                s0 = double(path_ptr_->t_to_s_lookup(DM{tau0})[0]);
+            }else{
+                s0 = init.at("s");
+                tau0 = double(path_ptr_->s_to_t_lookup(DM{s0})[0]);
+            }
 
-            //const auto track_width = path_->get_width();
-            const auto delta_min = vehicle_params_.at("delta_min");
-            const auto delta_max = vehicle_params_.at("delta_max");
-            const auto delta_dot_min = vehicle_params_.at("delta_dot_min");
-            const auto delta_dot_max = vehicle_params_.at("delta_dot_max");
+            if(init.find("phi")!=init.end()){
+                phi0=init.at("phi");
+            }else{
+                phi0 = double(path_ptr_->f_phi(DM{tau0})[0]);
+            }
 
-            const auto s_val = casadi::DM::linspace(0,path_->get_max_length(),N_+1).T();
-            const auto tau_array = path_->s_to_t_lookup(s_val)[0];
-            const auto tau0 = double(tau_array(0));
-            const auto phi0 = double(path_->f_phi(tau_array(0))[0]);
-            const auto tau_array_mid = path_->s_to_t_lookup((s_val(0,_0_N)+s_val(0,_N_1))*0.5);
+            if(init.find("v")!=init.end()){
+                v0=init.at("v");
+            }else{
+                v0 = 0.15;
+            }
 
-            const auto kappa_array = path_->f_kappa(tau_array_mid)[0];
-            //const auto kappa_array = (kappa_array_temp(0,_N_1) + kappa_array_temp(0,Slice(1,N+1)))*0.5;
-            const auto tangent_vec_array= path_->f_tangent_vec(tau_array_mid)[0];
-            //const auto tangent_vec_array = (tangent_vec_array_temp(all,_N_1) + tangent_vec_array_temp(all,Slice(1,N+1)))*0.5;
+            if(init.find("n")!=init.end()){
+                n0=init.at("n");
+            }else{
+                n0 = 0.0;
+            }
+            auto X0 = casadi::DM::vertcat({tau0, n0, phi0, v0, 0, 0, 0});
+            std::cout<<"X0: "<<X0<<std::endl;
 
-            const auto phi_array = DM::atan2(tangent_vec_array(1,all),tangent_vec_array(0,all));
-            const auto tangent_vec_norm = DM::sqrt((tangent_vec_array(0,all)*tangent_vec_array(0,all)+tangent_vec_array(1,all)*tangent_vec_array(1,all)));
+            if(length<=0){
+                st = path_ptr_->get_max_length();
+            }else{
+                st = s0+length;
+                st=std::min(st,path_ptr_->get_max_length());
+            }
 
-            //tau_array.to_file("/home/acsr/Documents/data/tau_array_cpp.txt");
-            //kappa_array.to_file("/home/acsr/Documents/data/kappa_array_cpp.txt");
-            //tangent_vec_array.to_file("/home/acsr/Documents/data/tangent_vec_array_cpp.txt");
-            //phi_array.to_file("/home/acsr/Documents/data/phi_array_cpp.txt");
-            //tangent_vec_norm.to_file("/home/acsr/Documents/data/tangent_vec_norm_cpp.txt");
+            const auto s_array = casadi::DM::linspace(s0,st,N+1).T();
+            const auto tau_array = path_ptr_->s_to_t_lookup(s_array)[0];
+
+            const auto tau_array_mid = path_ptr_->s_to_t_lookup((s_array(0,_0_N)+s_array(0,_N_1))*0.5);
+            const auto kappa_array_mid = path_ptr_->f_kappa(tau_array_mid)[0];
+            const auto tangent_vec_array_mid= path_ptr_->f_tangent_vec(tau_array_mid)[0];
+
+            const auto phi_array_mid = DM::atan2(tangent_vec_array_mid(1,all),tangent_vec_array_mid(0,all));
+            const auto tangent_vec_norm_mid = DM::sqrt((tangent_vec_array_mid(0,all)*tangent_vec_array_mid(0,all)+tangent_vec_array_mid(1,all)*tangent_vec_array_mid(1,all)));
+
+
 
             casadi::Opti opti;
-            auto X = opti.variable(nx,N_+1);
-            auto U = opti.variable(nu, N_);
-            //auto X_dot = opti.variable(nx, N);
-            auto dt_sym_array = opti.variable(1,N_);
+            auto X = opti.variable(nx_,N+1);
+            auto U = opti.variable(nu_, N);
+            auto dt_sym_array = opti.variable(1,N);
 
             auto n_sym_array = (X(IDX_X_n,_0_N)+X(IDX_X_n,_N_1))*0.5;
             auto phi_sym_array = (X(IDX_X_phi, _0_N)+X(IDX_X_phi, _N_1))*0.5;
@@ -251,31 +248,29 @@ namespace acsr{
             //auto n_sym_array = X(1,Slice());
             //auto n_obj = (casadi::MX::atan(5 * ( n_sym_array*n_sym_array - track->get_width()*track->get_width() / 4) ) + casadi::pi / 2) * 12;
 
-            auto X0 = casadi::DM::vertcat({tau0, n0, phi0, v0, 0, 0, 0});
-            std::cout<<"X0: "<<X0<<std::endl;
+            auto dphi_c_sym_array = phi_sym_array - phi_array_mid;
+            auto fx_f_sym_array = cd_ * throttle_sym_array - cm0_ - cm1_ * vx_sym_array * vx_sym_array - cm2_ * vy_sym_array * vy_sym_array - cbf_ * front_brake_sym_array;
+            auto fx_r_sym_array = cd_ * throttle_sym_array - cm0_ - cm1_ * vx_sym_array * vx_sym_array - cm2_ * vy_sym_array * vy_sym_array - cbr_ * rear_brake_sym_array;
 
-            auto dphi_c_sym_array = phi_sym_array - phi_array;
-            auto fx_f_sym_array = cd * throttle_sym_array - cm0 - cm1 * vx_sym_array * vx_sym_array - cm2 * vy_sym_array * vy_sym_array - cbf * front_brake_sym_array;
-            auto fx_r_sym_array = cd * throttle_sym_array - cm0 - cm1 * vx_sym_array * vx_sym_array - cm2 * vy_sym_array * vy_sym_array - cbr * rear_brake_sym_array;
+            auto alpha_f = MX::atan2(omega_sym_array * lf_ + vy_sym_array, -vx_sym_array) + delta_sym_array;
+            auto alpha_r = MX::atan2(omega_sym_array * lr_ - vy_sym_array, vx_sym_array);
 
-            auto alpha_f = MX::atan2(omega_sym_array * lf + vy_sym_array, -vx_sym_array) + delta_sym_array;
-            auto alpha_r = MX::atan2(omega_sym_array * lr - vy_sym_array, vx_sym_array);
+            auto fy_f_sym_array = front_tire_model_->get_lateral_force(alpha_f, double(Fz(0)));
+            auto fy_r_sym_array = rear_tire_model_->get_lateral_force(alpha_r, double(Fz(1)));
 
-            auto fy_f_sym_array = front_tire_model->get_lateral_force(alpha_f, double(Fz(0)));
-            auto fy_r_sym_array = rear_tire_model->get_lateral_force(alpha_r, double(Fz(1)));
+            //auto n_low_obj = MX::atan(10*(MX(road_constraint_lower_bound_)-X(IDX_X_n,all)));
+            //auto n_upper_obj = MX::atan(10*(X(IDX_X_n,all)-MX(road_constraint_upper_bound_)));
+            auto n_obj = MX::exp(10*(X(IDX_X_n,Slice())/(path_width_/2)-1)) + MX::exp(10*(X(IDX_X_n,Slice())/(-path_width_/2)-1));
 
-            auto n_low_obj = MX::atan(10*(MX(road_constraint_lower_bound_)-X(IDX_X_n,all)));
-            auto n_upper_obj = MX::atan(10*(X(IDX_X_n,all)-MX(road_constraint_upper_bound_)));
-
-            opti.minimize(10*MX::sum2(dt_sym_array) + 10*MX::dot(delta_dot_sym_array,delta_dot_sym_array) + MX::sum2(n_low_obj) + MX::sum2(n_upper_obj));
+            opti.minimize(100*MX::sum2(dt_sym_array) + 10*MX::dot(delta_dot_sym_array,delta_dot_sym_array) + MX::sum2(n_obj));
             //dynamics
             //opti.subject_to(X(all, Slice(1,N+1)) == X(all, _N_1) + X_dot);
-            opti.subject_to(X(0, _N_1) == X(0, _0_N) + dt_sym_array * (vx_sym_array * MX::cos(dphi_c_sym_array) - vy_sym_array * MX::sin(dphi_c_sym_array))/(tangent_vec_norm*(1-n_sym_array*kappa_array)));
+            opti.subject_to(X(0, _N_1) == X(0, _0_N) + dt_sym_array * (vx_sym_array * MX::cos(dphi_c_sym_array) - vy_sym_array * MX::sin(dphi_c_sym_array))/(tangent_vec_norm_mid*(1-n_sym_array*kappa_array_mid)));
             opti.subject_to(X(1, _N_1) == X(1, _0_N) + dt_sym_array * (vx_sym_array * MX::sin(dphi_c_sym_array) + vy_sym_array* MX::cos(dphi_c_sym_array)));
             opti.subject_to(X(2, _N_1) == X(2, _0_N) + dt_sym_array * omega_sym_array);
-            opti.subject_to(X(3, _N_1) == X(3, _0_N) + dt_sym_array * (fx_r_sym_array + fx_f_sym_array * MX::cos(delta_sym_array) - fy_f_sym_array * MX::sin(delta_sym_array) + mass * vy_sym_array* omega_sym_array)/ mass);
-            opti.subject_to(X(4, _N_1) == X(4, _0_N) + dt_sym_array * (fy_r_sym_array + fx_f_sym_array * MX::sin(delta_sym_array) + fy_f_sym_array * MX::cos(delta_sym_array) - mass * vx_sym_array * omega_sym_array)/ mass);
-            opti.subject_to(X(5, _N_1) == X(5, _0_N) + dt_sym_array * (fy_f_sym_array * lf * MX::cos(delta_sym_array) + fx_f_sym_array * lf * MX::sin(delta_sym_array) - fy_r_sym_array * lr)/ Iz);
+            opti.subject_to(X(3, _N_1) == X(3, _0_N) + dt_sym_array * (fx_r_sym_array + fx_f_sym_array * MX::cos(delta_sym_array) - fy_f_sym_array * MX::sin(delta_sym_array) + mass_ * vy_sym_array* omega_sym_array)/ mass_);
+            opti.subject_to(X(4, _N_1) == X(4, _0_N) + dt_sym_array * (fy_r_sym_array + fx_f_sym_array * MX::sin(delta_sym_array) + fy_f_sym_array * MX::cos(delta_sym_array) - mass_ * vx_sym_array * omega_sym_array)/ mass_);
+            opti.subject_to(X(5, _N_1) == X(5, _0_N) + dt_sym_array * (fy_f_sym_array * lf_ * MX::cos(delta_sym_array) + fx_f_sym_array * lf_ * MX::sin(delta_sym_array) - fy_r_sym_array * lr_)/ Iz_);
             opti.subject_to(X(6, _N_1) == X(6, _0_N) + dt_sym_array * delta_dot_sym_array);
             //inital conditions
 
@@ -283,35 +278,42 @@ namespace acsr{
             opti.subject_to(X(all, 0) == X0);
             opti.subject_to(dt_sym_array >0);
             opti.subject_to(X(IDX_X_vx, all) >0);
+
             //state boundary
-            opti.subject_to(opti.bounded(delta_min, X(IDX_X_delta,all), delta_max));
-            //opti.subject_to(opti.bounded(road_constraint_lower_bound_,X(IDX_X_n,all),road_constraint_upper_bound_));
-            //opti.subject_to(opti.bounded(delta_min, delta_sym_array, delta_max));
-            //opti.subject_to(opti.bounded(-track_width/2,n_sym_array,track_width/2));
+            opti.subject_to(opti.bounded(delta_min_, X(IDX_X_delta,all), delta_max_));
+
             //control boundary
-            opti.subject_to(opti.bounded(delta_dot_min, delta_dot_sym_array, delta_dot_max));
+            opti.subject_to(opti.bounded(delta_dot_min_, delta_dot_sym_array, delta_dot_max_));
             opti.subject_to(opti.bounded(0, throttle_sym_array, 1));
             opti.subject_to(opti.bounded(0, front_brake_sym_array, 1));
             opti.subject_to(opti.bounded(0, rear_brake_sym_array, 1));
 
-            auto X_guess = casadi::DM::zeros(nx,N_+1);
-            //X_guess(0,Slice()) = tau_array;
-            //X_guess(2,Slice(1,N+1)) = phi_array;
-            //X_guess(3,all) = v0;
-            for(auto i=0;i<N_+1;++i){
-                X_guess(Slice(), i) = X0;
-            }
-            opti.set_initial(X, X_guess);
+            auto X_guess = casadi::DM::zeros(nx_,N+1);
+            X_guess(Slice(), 0) = X0;
+            //X_guess(IDX_X_t,all) = tau_array;
 
+            X_guess(IDX_X_phi,0) = phi0;
+            const auto phi_array = path_ptr_->f_phi(tau_array)[0];
+            for(auto i=1;i<N+1;++i){
+                X_guess(IDX_X_phi,i) = phi_array(i);
+                if(double(phi_array(i))-double(X_guess(IDX_X_phi,i-1))<-pi){
+                    X_guess(IDX_X_phi,i)=X_guess(IDX_X_phi,i)+2*pi;
+                }else if(double(phi_array(i))-double(X_guess(IDX_X_phi,i-1))>pi){
+                    X_guess(IDX_X_phi,i)=X_guess(IDX_X_phi,i)-2*pi;
+                }
+            }
+
+            X_guess(IDX_X_vx,all)=v0;
+            X_guess(IDX_X_t,all) = tau_array;
+
+            opti.set_initial(X, X_guess);
+            opti.set_initial(dt_sym_array,(s_array(_N_1)-s_array(_0_N))/v0);
             opti.solver("ipopt", casadi_option, option_);
             try{
                 auto sol = opti.solve();
                 auto dt_array = sol.value(dt_sym_array);
                 auto sol_x = sol.value(X);
                 auto sol_u = sol.value(U);
-                if(save_to_database_){
-                    //save(dt_array,sol_x,sol_u);
-                }
                 return std::make_pair(true,std::make_tuple(dt_array,sol_x,sol_u));
             }
             catch (CasadiException& e){
@@ -319,48 +321,9 @@ namespace acsr{
                 std::cout<<"Solve Optimal Problem Fails\n";
                 return std::make_pair(false,std::make_tuple(DM{},DM{},DM{}));;
             }
-
         }
 
-        std::pair<DM,DM> boundary_xy(){
-            auto s = DM::linspace(0,path_->get_max_length(),N_+1);
-            s = s.T();
-            auto t = path_->s_to_t_lookup(s)[0];
-            //auto n = DM::zeros(1,N_+1);
-            auto outer_line = path_->f_tn_to_xy(DMVector {t,road_constraint_lower_bound_})[0];
-            auto inner_line = path_->f_tn_to_xy(DMVector {t,road_constraint_upper_bound_})[0];
-            return std::make_pair(outer_line,inner_line);
-        }
-
-        std::pair<DM,DM> boundary_n(){
-            return std::make_pair(road_constraint_lower_bound_,road_constraint_upper_bound_);
-        }
-
-        void set_database_file(const std::string& file_name){
-            database_file_ =  file_name;
-        }
-
-        void set_datatable_name(const std::string& table_name){
-            datatable_name_ = table_name;
-        }
-
-
-    private:
-        std::shared_ptr<Path> path_;
-        double path_width_{};
-        param_t vehicle_params_,front_tire_params_,rear_tire_params_,track_params_;
-        std::string database_file_ ="../output/global_planner.db";
-        std::string datatable_name_ = std::string();
-        std::string current_datatable_name_ = std::string();
-        Dict option_;
-        bool save_to_database_=false;
-        DM road_constraint_upper_bound_,road_constraint_lower_bound_;
-        const int N_{};
-
-        //std::shared_ptr<valid_checker_t> valid_checker_;
-
-        constexpr static int nx = 7;
-        constexpr static int nu = 4;
+    public:
         constexpr static unsigned IDX_X_t = 0;
         constexpr static unsigned IDX_X_n = 1;
         constexpr static unsigned IDX_X_phi = 2;
@@ -374,123 +337,26 @@ namespace acsr{
         constexpr static unsigned IDX_U_Fb = 2;
         constexpr static unsigned IDX_U_Rb = 3;
 
+    private:
+        std::shared_ptr<Path> path_ptr_;
+        double path_width_{};
+        std::shared_ptr<TireModel> front_tire_model_,rear_tire_model_;
+        //param_t vehicle_params_,front_tire_params_,rear_tire_params_,track_params_;
+        //std::string database_file_ ="../output/global_planner.db";
+        //std::string datatable_name_ = std::string();
+        //std::string current_datatable_name_ = std::string();
+        Dict option_;
+        //bool save_to_database_=false;
+        //DM road_constraint_upper_bound_,road_constraint_lower_bound_;
+        //const int N_{};
 
-        /*
-        void save(DM& dt_array,DM& x,DM& u){
-            SQLite::Database    db(database_file_, SQLite::OPEN_READWRITE|SQLite::OPEN_CREATE);
-            std::cout << "SQLite database file '" << db.getFilename().c_str() << "' opened successfully\n";
-            current_datatable_name_ = datatable_name_;
-            if(current_datatable_name_.empty()){
-                const auto now = std::chrono::system_clock::now();
-                time_t rawtime;
-                struct tm * timeinfo;
-                char buffer[40];
-                time (&rawtime);
-                timeinfo = localtime(&rawtime);
-                strftime(buffer,sizeof(buffer),"_%d_%H_%M_%S",timeinfo);
-                current_datatable_name_ = std::string(buffer);
-            }
+        //std::shared_ptr<valid_checker_t> valid_checker_;
 
-
-            {
-                //delete table if exist
-                std::string drop_statement_string = "DROP TABLE IF EXISTS " + current_datatable_name_;
-                db.exec(drop_statement_string);
-                std::cout << "Save data to data table: " << current_datatable_name_ << "\n";
-
-                //create table
-                std::string table_statement_string = "create table if not exists "
-                                                     +current_datatable_name_
-                                                     + "("
-                                                       "id INTEGER PRIMARY KEY AUTOINCREMENT, "
-                                                       "dt REAL,"
-                                                       "tau REAL,"
-                                                       "s REAL,"
-                                                       "n REAL,"
-                                                       "x REAL,"
-                                                       "y REAL,"
-                                                       "phi REAL,"
-                                                       "vx REAL,"
-                                                       "vy REAL,"
-                                                       "omega REAL,"
-                                                       "delta REAL,"
-                                                       "delta_dot REAL,"
-                                                       "throttle REAL,"
-                                                       "front_brake REAL,"
-                                                       "rear_brake REAL"
-                                                       ")";
-                SQLite::Statement query(db, table_statement_string);
-                try {
-                    query.exec();
-                } catch (SQLite::Exception &e) {
-                    std::cout << "Create Table "<<current_datatable_name_<<" Error\n";
-                    std::cout << e.what()<<std::endl;
-                    return;
-                }
-                std::string query_string = "INSERT INTO " +current_datatable_name_
-                                           +" (dt,tau,s,n,x,y,phi,vx,vy,omega,delta,delta_dot,throttle,front_brake,rear_brake) "
-                                            "VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)";
-                query = SQLite::Statement(db, query_string);
-
-
-                auto N = x.columns()-1;
-                auto dm_xy = path_->f_tn_to_xy(std::vector<DM>{x(0,Slice()),x(1,Slice())})[0];
-                auto s_array = path_->t_to_s_lookup(x(0,Slice()))[0];
-
-                for(auto i=0;i<N;++i){
-                    query = SQLite::Statement(db, query_string);
-                    query.bind(1,double(dt_array(0,i)));
-                    query.bind(2,double(x(0,i)));
-                    query.bind(3,double(s_array(0,i)));
-                    query.bind(4,double(x(1,i)));
-                    query.bind(5,double(dm_xy(0,i)));
-                    query.bind(6,double(dm_xy(1,i)));
-                    query.bind(7,double(x(2,i)));
-                    query.bind(8,double(x(3,i)));
-                    query.bind(9,double(x(4,i)));
-                    query.bind(10,double(x(5,i)));
-                    query.bind(11,double(x(6,i)));
-                    query.bind(12,double(u(0,i)));
-                    query.bind(13,double(u(1,i)));
-                    query.bind(14,double(u(2,i)));
-                    query.bind(15,double(u(3,i)));
-                    try {
-                        query.exec();
-                    } catch (SQLite::Exception &e) {
-                        std::cout << "Insert Solution Error\n";
-                        std::cout << e.what();
-                        return;
-                    }
-                }
-
-                query = SQLite::Statement(db, query_string);
-                //query.bind(1,NULL);
-                query.bind(2,double(x(0,N)));
-                query.bind(3,double(s_array(0,N)));
-                query.bind(4,double(x(1,N)));
-                query.bind(5,double(dm_xy(0,N)));
-                query.bind(6,double(dm_xy(1,N)));
-                query.bind(7,double(x(2,N)));
-                query.bind(8,double(x(3,N)));
-                query.bind(9,double(x(4,N)));
-                query.bind(10,double(x(5,N)));
-                query.bind(11,double(x(6,N)));
-                //query.bind(12,double(u(0,NULL)));
-                //query.bind(13,double(u(1,NULL)));
-                //query.bind(14,double(u(2,NULL)));
-                //query.bind(15,double(u(3,NULL)));
-                try {
-                    query.exec();
-                } catch (SQLite::Exception &e) {
-                    std::cout << "Insert last dataset Error\n";
-                    std::cout << e.what();
-                    return;
-                }
-
-            }
-            std::cout<<"save to database finished\n";
-
-        }*/
+        //constexpr static int nx = 7;
+        //constexpr static int nu = 4;
+        double cd_,cm0_,cm1_,cm2_,cbf_,cbr_;
+        double lf_,lr_,mass_,Iz_;
+        double delta_min_,delta_max_,delta_dot_min_,delta_dot_max_,v_max_,v_min_,d_max_,d_min_;
 
     };
 
@@ -526,7 +392,6 @@ namespace acsr{
                 wheel_base_ = params.at("wheel_base");
             else
                 wheel_base_ = double(params.at("lf"))+double(params.at("lr"));
-
         }
 
         std::pair<bool,std::tuple<DM,DM,DM>> make_plan(const param_t & init, double length =-1, int N =100, bool print = true){
@@ -543,19 +408,19 @@ namespace acsr{
                 option_["print_level"]=1;
             }
 
-            double tau_0,s0,st,phi0,v0;
+            double tau0,s0,st,phi0,v0;
             if(init.find("t")!=init.end()){
-                tau_0 = init.at("t");
-                s0 = double(path_ptr_->t_to_s_lookup(DM{tau_0})[0]);
+                tau0 = init.at("t");
+                s0 = double(path_ptr_->t_to_s_lookup(DM{tau0})[0]);
             }else{
                 s0 = init.at("s");
-                tau_0 = double(path_ptr_->s_to_t_lookup(DM{s0})[0]);
+                tau0 = double(path_ptr_->s_to_t_lookup(DM{s0})[0]);
             }
 
             if(init.find("phi")!=init.end()){
                 phi0=init.at("phi");
             }else{
-                phi0 = double(path_ptr_->f_phi(DM{tau_0})[0]);
+                phi0 = double(path_ptr_->f_phi(DM{tau0})[0]);
             }
 
             if(init.find("v")!=init.end()){
@@ -573,7 +438,6 @@ namespace acsr{
 
             const auto s_array = casadi::DM::linspace(s0,st,N+1).T();
             const auto tau_array = path_ptr_->s_to_t_lookup(s_array)[0];
-
 
             //auto tau_array_mid = path_ptr_->s_to_t_lookup((s_val(0,_0_N)+s_val(0,_N_1))*0.5)[0];
 
@@ -603,7 +467,7 @@ namespace acsr{
 
 
 
-            auto X0 = casadi::DM::vertcat({tau_0, 0, phi0, v0});
+            auto X0 = casadi::DM::vertcat({tau0, 0, phi0, v0});
             auto dphi_c_sym_array =  phi_sym_array - phi_array(0,_0_N);
 
             auto n_obj = MX::exp(10*(X(IDX_X_n,Slice())/(path_width_/2)-1)) + MX::exp(10*(X(IDX_X_n,Slice())/(-path_width_/2)-1));

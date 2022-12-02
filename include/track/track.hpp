@@ -9,7 +9,7 @@
 #include "csv_reader.hpp"
 #include "bezier.hpp"
 #include "rtree.hpp"
-#include <matplotlibcpp.h>
+//#include <matplotlibcpp.h>
 
 using casadi::Slice;
 using namespace casadi;
@@ -95,7 +95,7 @@ namespace acsr {
         }
 
 
-
+/*
         void plot(){
             namespace plt = matplotlibcpp;
             auto center_x_dm = center_line(0,Slice());
@@ -135,7 +135,7 @@ namespace acsr {
 
             plt::show();
         }
-
+*/
         double get_max_length(){
             return s_max;
         }

@@ -124,52 +124,36 @@ void track_test(){
 
 using namespace std;
 int main(int argc, char **argv) {
-    DM aa{1,2},bb{3,4};
-    auto a = std::vector<std::vector<double>>{{1},{3}};
-    auto b = std::vector<std::vector<double>>{{4,2,5},{1,1,4}};
 
+    SQLite::Database    db("../output/global_planner.db", SQLite::OPEN_READWRITE);
+    SQLite::Statement query(db,"select dt,x_0,x_1,x_2,x_3,u_0,u_1 from _28_16_31_53");
 
-    auto dm_a = DM(a);
-    auto dm_b = DM(b);
-    auto dm_c = DM{2,3,5};
-    std::cout<<dm_a*dm_b<<std::endl;
-
-    std::cout<<dm_a<<std::endl;
-    std::cout<<dm_c<<std::endl;
-    std::cout<<repmat(dm_c.T(),2,1)<<std::endl;
-
-    auto t = MX::sym("t",1,3);
-    auto rep_t = repmat(t,2,1);
-    std::cout<<rep_t.size1()<<'\t'<<rep_t.size2()<<std::endl;
-    //make_planner_test();
-    //waypoint_process_test();
-
-    //path_preprocessor_test();
-    //bgi_distance_test();
-    //planner_test();
-
-
-    std::string half_track_data_file = "../data/temp.csv";
-    auto reader = CSVReader(half_track_data_file);
-    auto raw_data = reader.read();
-    DM waypoints;
-    if(!raw_data.toDM(waypoints)){
-        std::cout<<"Read Track File Fails\n";
+    std::vector<std::vector<double>> value;
+    while(query.executeStep()) {
+        value.push_back( query.getColumns<std::vector<double>, 7>());
     }
-    std::cout<<waypoints<<std::endl;
-    acsr::Path path(waypoints);
+    for(auto i=0;i<7;i++){
+        std::cout<<value.back()[i]<<'\t';
+    }
 
-    DM pt{124.6,31.66};
-    auto tau0 = path.xy2t(pt);
-    auto n0 = path.f_xy_to_tn(DMVector{pt,tau0});
-    std::cout<<n0<<std::endl;
+    db.exec("create table if not exists index_table(ID integer primary key autoincrement, value1 real,value2 integer)");
 
 
-    //track_test();
-
+        SQLite::Statement query2(db, "insert into index_table (value1,value2) values (2.6," + std::to_string(8) + ")");
+        query2.exec();
 
 
 
+
+    SQLite::Statement query3(db,"select * from index_table");
+    int v;
+    query3.executeStep();
+//    while (){
+//        v = query2.getColumn(2);
+//    }
+    std::cout<<v<<std::endl;
+    //query2.executeStep();
+    //std::cout<<'\n'<<query2.getColumn(0)<<std::endl;
     //::testing::InitGoogleTest(&argc, argv);
     //return RUN_ALL_TESTS();
     return 0;

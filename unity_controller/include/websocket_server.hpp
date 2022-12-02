@@ -65,8 +65,8 @@ namespace acsr{
                 // Some computation here
                 auto end = std::chrono::system_clock::now();
                 std::chrono::duration<double> elapsed_seconds = end-start;
-                if(elapsed_seconds<dt_){
-                    std::this_thread::sleep_for(dt_-elapsed_seconds);
+                if(elapsed_seconds<dt_-10ms){
+                    std::this_thread::sleep_for(dt_-10ms-elapsed_seconds);
                 }
                 end = std::chrono::system_clock::now();
                 std::chrono::duration<double> elapsed = end-start;

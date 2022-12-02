@@ -16,13 +16,13 @@ namespace acsr {
 
         UnityController(double estimated_dt = 0.1, bool save_global_data=true,bool save_local_data=true,std::string database_file = "../output/global_planner.db")
             :db_manager(database_file),estimated_dt_(estimated_dt),save_global_data_(save_global_data),save_local_data_(save_global_data),
-             server(0.1){
+             server_(0.1){
 
         }
 
         void run() {
 
-            server.run(std::bind(&UnityController::waypoints_processor, this, std::placeholders::_1),
+            server_.run(std::bind(&UnityController::waypoints_processor, this, std::placeholders::_1),
                        std::bind(&UnityController::data_processor, this, std::placeholders::_1));
         }
 
@@ -37,7 +37,7 @@ namespace acsr {
             double pt_y = pose.at("y");
             double phi=pose.at("psi");
 
-            waypoints = DM(std::vector<std::vector<double>>{waypoint_x,waypoint_y});
+            waypoints_ = DM(std::vector<std::vector<double>>{waypoint_x,waypoint_y});
 
             std::async(std::launch::deferred,[&waypoint_x,&waypoint_y](){
                 std::ofstream outfile("../data/temp.csv");
@@ -47,7 +47,7 @@ namespace acsr {
             });
 
 
-            path_ptr_ = std::make_shared<Path>(waypoints);
+            path_ptr_ = std::make_shared<Path>(waypoints_);
             //std::string database_file{"../output/global_planner.db"};
             std::string vehicle_file = "../data/params/racecar.json";
             if(!std::filesystem::exists(vehicle_file)){
@@ -58,7 +58,7 @@ namespace acsr {
             auto vehicle_params = json::parse(ifs);
 
             double track_width = value.at("track_width");
-            int N = 1000;
+            int N = 200;
             GlobalPlanner optimizer(path_ptr_,track_width,vehicle_params);
 
             auto dm_pt = DM{pt_x,pt_y};
@@ -66,7 +66,7 @@ namespace acsr {
             auto n0 =path_ptr_->f_xy_to_tn(DMVector{dm_pt,tau0})[0];
 
             param_t init{{"t",double(tau0)},{"n",double(n0)},{"phi",phi},{"v",0.15}};
-            auto return_value = optimizer.make_plan(init,-1,N);
+            auto return_value = optimizer.make_plan(init,1000,N);
             if(return_value.first){
                 auto& data = return_value.second;
                 auto& dt = std::get<0>(data);
@@ -104,7 +104,7 @@ namespace acsr {
             //std::cout<<value<<std::endl;
             DM x0 = DM{value.at("x"),value.at("y"),value.at("psi"),value.at("vx")};
             //std::cout<<"received_x0"<<x0<<std::endl;
-            auto estimate_state = x0 + estimated_dt_ * local_planner_ptr_->dynamics_model_cartesian(x0,sent_control);
+            auto estimate_state = x0 + estimated_dt_ * local_planner_ptr_->dynamics_model_cartesian(x0,sent_control_);
             //std::cout<<"estimated_x0"<<estimate_state<<std::endl;
 
             DM x,u;
@@ -112,7 +112,7 @@ namespace acsr {
             if(local_planner.first) {
                 x = local_planner.second.first;
                 u = local_planner.second.second;
-                sent_control = u(Slice(), 0);
+                sent_control_ = u(Slice(), 0);
             }else{
                 return R"({"foo": "bar"})"_json;
             }
@@ -129,8 +129,8 @@ namespace acsr {
         }
 
     private:
-        WsServer server;
-        DM waypoints;
+        WsServer server_;
+        DM waypoints_;
         std::shared_ptr<Path> path_ptr_;
         std::shared_ptr<GlobalTrajectory> global_trajectory_ptr_;
         std::shared_ptr<LocalPlanner> local_planner_ptr_;
@@ -139,7 +139,7 @@ namespace acsr {
         DbManager db_manager;
         double estimated_dt_;
 
-        DM sent_control=DM::zeros(LocalPlanner::nu_);
+        DM sent_control_=DM::zeros(LocalPlanner::nu_);
 
 
 

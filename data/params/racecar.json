@@ -22,9 +22,35 @@
       "mass": 40
     }
   },
+  "tire":{
+    "front": {
+      "longitudinal": {
+        "B": 1.11,
+        "C": 3.4,
+        "D": 1
+      },
+      "lateral": {
+        "B": 3.97,
+        "C": 1.84,
+        "D": 1
+      }
+    },
+    "rear": {
+      "longitudinal": {
+        "B": 1.11,
+        "C": 3.4,
+        "D": 1
+      },
+      "lateral": {
+        "B": 3.97,
+        "C": 1.84,
+        "D": 1
+      }
+    }
+  },
   "constraint": {
     "d_max": 1.0,
-    "d_min": -1.0,
+    "d_min": 0.0,
     "v_max": 100.0,
     "v_min": 0.1,
     "delta_min": -0.436,

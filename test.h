@@ -38,6 +38,7 @@ void bgi_distance_test(){
 
 }
 
+/*
 void make_planner_test(){
     namespace plt = matplotlibcpp;
 
@@ -117,9 +118,9 @@ void make_planner_test(){
     }
 
     //create the global planner optimizer
-    BicycleDynamicsTwoBrakeOptimizer<TestMap> optimizer(path_ptr,2*edge_margin,vehicle_params,front_tire_params,rear_tire_params,150,test_map_ptr);
+    //BicycleDynamicsTwoBrakeOptimizer<TestMap> optimizer(path_ptr,2*edge_margin,vehicle_params,front_tire_params,rear_tire_params,150,test_map_ptr);
     //get the trajectory
-    auto optimized_path = optimizer.make_plan();
+    //auto optimized_path = optimizer.make_plan();
 
     //plot
     plt::figure(1);
@@ -180,7 +181,6 @@ void make_planner_test(){
     plt::legend();
     plt::show();
 }
-
-
+*/
 
 #endif //RACECARPLANNER_TEST_H
