@@ -284,7 +284,7 @@ namespace acsr{
 
             //control boundary
             opti.subject_to(opti.bounded(delta_dot_min_, delta_dot_sym_array, delta_dot_max_));
-            opti.subject_to(opti.bounded(0, throttle_sym_array, 1));
+            opti.subject_to(opti.bounded(0, throttle_sym_array, d_max_));
             opti.subject_to(opti.bounded(0, front_brake_sym_array, 1));
             opti.subject_to(opti.bounded(0, rear_brake_sym_array, 1));
 

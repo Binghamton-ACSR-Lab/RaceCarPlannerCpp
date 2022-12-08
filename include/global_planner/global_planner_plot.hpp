@@ -104,7 +104,7 @@ namespace acsr {
             auto outer_x_dm = outer_line(0,Slice());
             auto outer_y_dm = outer_line(1,Slice());
 
-            auto dm_t = trajectory_ptr_->get_t_vec();
+            auto dm_t = trajectory_ptr_->get_t_vec().T();
             auto state = trajectory_ptr_->f_t_to_state(DMVector{dm_t})[0];
             auto trajectory_line = path_ptr->f_tn_to_xy(DMVector {state(0,Slice()),state(1,Slice())})[0];
             auto trajectory_x_dm = trajectory_line(0,Slice());

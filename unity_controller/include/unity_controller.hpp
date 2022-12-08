@@ -58,7 +58,7 @@ namespace acsr {
             auto vehicle_params = json::parse(ifs);
 
             double track_width = value.at("track_width");
-            int N = 200;
+            int N = 400;
             GlobalPlanner optimizer(path_ptr_,track_width,vehicle_params);
 
             auto dm_pt = DM{pt_x,pt_y};
@@ -66,7 +66,7 @@ namespace acsr {
             auto n0 =path_ptr_->f_xy_to_tn(DMVector{dm_pt,tau0})[0];
 
             param_t init{{"t",double(tau0)},{"n",double(n0)},{"phi",phi},{"v",0.15}};
-            auto return_value = optimizer.make_plan(init,1000,N);
+            auto return_value = optimizer.make_plan(init,2000,N);
             if(return_value.first){
                 auto& data = return_value.second;
                 auto& dt = std::get<0>(data);
