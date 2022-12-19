@@ -6,9 +6,48 @@
 #define RACECARPLANNER_UTILITY_HPP
 #include <boost/geometry.hpp>
 #include <casadi/casadi.hpp>
+#include <boost/utility.hpp>
+
 namespace bg=boost::geometry;
 
 using param_t = std::map<std::string,double>;
+
+
+
+namespace acsr{
+
+    class Random : boost::noncopyable
+    {
+    public:
+        static Random& get_instance(){
+            static Random instance;
+            return instance;
+        }
+
+        int random_value(int min, int max) {
+            std::uniform_int_distribution<int> distribution(min, max);
+            return distribution(random_engine_);
+        }
+
+        template <typename T>
+        T random_value(T min, T max) {
+            std::uniform_real_distribution<T> distribution(min,max);
+            return distribution(random_engine_);
+        }
+
+    private:
+        //static std::random_device rd_;
+        std::default_random_engine random_engine_;
+
+        Random():random_engine_(std::random_device()()){
+        };
+
+        ~Random(){
+            std::cout<<"acsr random destroyed\n";
+        }
+
+    };
+}
 
 template<typename P>
 struct DistancePoint {

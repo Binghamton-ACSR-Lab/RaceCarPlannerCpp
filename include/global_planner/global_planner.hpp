@@ -6,7 +6,6 @@
 #define RACECARPLANNER_GLOBAL_PLANNER_HPP
 
 #include "path.hpp"
-#include <yaml-cpp/yaml.h>
 #include <filesystem>
 #include "dynamics.hpp"
 #include "tire_model.hpp"

@@ -5,7 +5,6 @@
 #include <gtest/gtest.h>
 #include "track.hpp"
 #include "global_planner_track.hpp"
-#include <yaml-cpp/yaml.h>
 #include "matplotlibcpp.h"
 #include <tbb/tbb.h>
 #include <execution>
