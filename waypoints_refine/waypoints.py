@@ -29,8 +29,8 @@ def generate_path():
 
 state = generate_path()
 np_state = np.array(state)
-plt.plot(np_state[:, 0], np_state[:, 1])
-plt.show()
+# plt.plot(np_state[:, 0], np_state[:, 1])
+# plt.show()
 
 
 from elastica import *
@@ -66,14 +66,13 @@ print("normal:")
 print(normal)
 
 base_length = 0.1
-
 base_radius = 0.2
 base_area = np.pi * base_radius ** 2
 density = 1000
-youngs_modulus = 2e3
+youngs_modulus = 1e4
 # For shear modulus of 1e4, nu is 99!
-poisson_ratio = 0.01
-shear_modulus = 10*youngs_modulus / (poisson_ratio + 1.0)
+poisson_ratio = 0.03
+shear_modulus = youngs_modulus / (poisson_ratio + 1.0)
 
 positions = np_state.transpose()
 directions = np.copy(positions)
@@ -103,7 +102,10 @@ class WaypointsRefineCallBack(CallBackBaseClass):
 
 plot_history=[np.copy(positions)]
 
-for i in range(0,5000):
+total_its = 10000
+for i in range(0,total_its):
+    lengths = np.linalg.norm(positions[0:2,1:]-positions[0:2,0:-1],axis=0)
+    rest_lengths = lengths*0.97
     waypoints_sim = WaypointsRefineSimulator()
     waypoints_rod = CosseratRod.straight_rod(
         n_elem,
@@ -117,19 +119,39 @@ for i in range(0,5000):
         youngs_modulus,
         shear_modulus=shear_modulus,
         position=positions,
+        # rest_lengths = rest_lengths,
     )
+    waypoints_rod.rest_lengths = rest_lengths
 
     waypoints_sim.append(waypoints_rod)
     waypoints_sim.constrain(waypoints_rod).using(
-        OneEndFixedBC, constrained_position_idx=(0,), constrained_director_idx=(0,))
+        FixedConstraint,
+        constrained_position_idx=(0,-1),
+        constrained_director_idx=(0,)
+        )
     waypoints_sim.constrain(waypoints_rod).using(
-        GeneralConstraint,constrained_position_idx=(-1,),translational_constraint_selector=np.array([True, True, True]),
+        GeneralConstraint,
+        constrained_position_idx=(1,),
+        translational_constraint_selector=np.array([True, True, False]),
     )
+    # waypoints_sim.constrain(waypoints_rod).using(
+    #     GeneralConstraint,
+    #     constrained_position_idx=(-1,),
+    #     translational_constraint_selector=np.array([True, True, True]),
+    # )
+    # for i in range(1,n_elem-2):
+    #     waypoints_sim.constrain(waypoints_rod).using(
+    #         GeneralConstraint,
+    #         constrained_position_idx=(i,),
+    #         # constrained_director_idx=(i,),
+    #         translational_constraint_selector=np.array([False, False, True]),
+    #         # rotational_constraint_selector=np.array([True, True, False]),
+    #     )
 
     recorded_history = defaultdict(list)
     recorded_history["position"].append(waypoints_rod.position_collection.copy())
 
-    total_steps = 10
+    total_steps = 20
     waypoints_sim.collect_diagnostics(waypoints_rod).using(
         WaypointsRefineCallBack, step_skip=1, callback_params=recorded_history
     )
@@ -137,10 +159,10 @@ for i in range(0,5000):
     waypoints_sim.finalize()
     timestepper = PositionVerlet()
     # timestepper = PEFRL()
-    integrate(timestepper, waypoints_sim, 0.06, total_steps)
+    integrate(timestepper, waypoints_sim, 0.02, total_steps,progress_bar=False)
 
     positions = recorded_history["position"][-1]
-    if i%1000==0:
+    if i%int(total_its/5)==0:
         plot_history.append(positions)
 
 
