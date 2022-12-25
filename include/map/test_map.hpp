@@ -20,22 +20,22 @@ namespace acsr{
     public:
         TestMap()=default;
 
-        explicit TestMap(const std::string& filename){
+        explicit TestMap(const std::string& filename,double ratio){
             tinyxml2::XMLDocument doc;
             doc.LoadFile( filename.c_str());
             auto root = doc.RootElement();
             for (tinyxml2::XMLElement* child = root->FirstChildElement(); child != nullptr; child = child->NextSiblingElement())
             {
                 if(strcmp(child->Name(),"rectangle")==0){
-                    auto width = child->DoubleAttribute("width");
-                    auto height = child->DoubleAttribute("height");
-                    auto x = child->DoubleAttribute("x");
-                    auto y = child->DoubleAttribute("y");
+                    auto width = child->DoubleAttribute("width")*ratio;
+                    auto height = child->DoubleAttribute("height")*ratio;
+                    auto x = child->DoubleAttribute("x")*ratio;
+                    auto y = child->DoubleAttribute("y")*ratio;
                     add_rectangle(x,y,width,height);
                 }else if(strcmp(child->Name(),"circle")==0){
-                    auto x = child->DoubleAttribute("x");
-                    auto y = child->DoubleAttribute("y");
-                    auto radius = child->DoubleAttribute("radius");
+                    auto x = child->DoubleAttribute("x")*ratio;
+                    auto y = child->DoubleAttribute("y")*ratio;
+                    auto radius = child->DoubleAttribute("radius")*ratio;
                     add_circle(x,y,radius);
                 }
 
@@ -48,6 +48,12 @@ namespace acsr{
                 return !bg::within(point_t {x,y},s);
             });
         }
+
+        template<class T>
+        bool valid(T& state){
+            return valid(state[0],state[1]);
+        }
+
 
         template<class T>
         std::vector<std::pair<double,T>> near_collides(double distance_holder,double x,double y){

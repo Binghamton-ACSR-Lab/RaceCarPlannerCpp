@@ -119,7 +119,7 @@ namespace acsr {
                 auto a = cd_ * control[1] - cm0_ - cm1_ * result_state[3] - cm2_ * result_state[3] * result_state[3];
                 result_state[3] = std::clamp(result_state[3]+a*dt,v_min_,v_max_);
 
-                if(!map->validate(result_state)){
+                if(!map->valid(result_state)){
                     return {false,result_state};
                 }
             }
@@ -137,7 +137,7 @@ namespace acsr {
                 auto a = cd_ * control[1] - cm0_ - cm1_ * result_state[3] - cm2_ * result_state[3] * result_state[3];
                 result_state[3] = std::clamp(result_state[3]+a*dt,v_min_,v_max_);
 
-                if(!map->validate(result_state)){
+                if(!map->valid(result_state)){
                     return {false,result_state};
                 }
             }
@@ -259,7 +259,7 @@ namespace acsr {
                 result_state[1] = result_state[1]+control[1]*sin(control[0]+result_state[2])*dt;
                 result_state[2] = result_state[2]+control[1]*tan(control[0])/wheel_base_*dt;
 
-                if(!map->validate(result_state)){
+                if(!map->valid(result_state)){
                     return {false,result_state};
                 }
             }
@@ -274,7 +274,7 @@ namespace acsr {
                 result_state[1] = result_state[1]-control[1]*sin(control[0]+result_state[2])*dt;
                 result_state[2] = result_state[2]-control[1]*tan(control[0])/wheel_base_*dt;
 
-                if(!map->validate(result_state)){
+                if(!map->valid(result_state)){
                     return {false,result_state};
                 }
             }
