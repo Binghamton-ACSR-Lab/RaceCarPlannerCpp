@@ -17,14 +17,20 @@ using nlohmann::json;
 
 namespace acsr {
 
-    template<int nx, int nu>
+    template<size_t nx, size_t nu, size_t nc=3,size_t ni=3>
     struct Dynamics {
     public:
         static constexpr int nx_ = nx;
         static constexpr int nu_ = nu;
+        static constexpr int nc_ = nc;
+        static constexpr int ni_ = ni;
 
         using StateType = std::array<double,nx>;
         using ControlType = std::array<double,nu>;
+        using CellType = std::array<size_t,nc>;
+        using IndexType = std::array<double,ni>;
+
+
         //using CellType = std::array<int,CELL_DIMENSION>;
         //using TreeIndexType = std::array<double,TREE_INDEX_DIMENSION>;
 
@@ -33,6 +39,8 @@ namespace acsr {
         virtual double euclidean_distance(const StateType &x1, const StateType &x2){
             return sqrt((x1[0]-x2[0])*(x1[0]-x2[0])+(x1[1]-x2[1])*(x1[1]-x2[1]));
         }
+
+
     };
 
 
@@ -154,6 +162,32 @@ namespace acsr {
             return ControlType{rnd.random_value(delta_min_,delta_max_),rnd.random_value(a_min_,a_max_)};
         }
 
+        template<class MAP>
+        CellType state_to_cell(std::shared_ptr<MAP> map, const StateType& state){
+            double phi = state[2];
+
+            while(phi<-M_PI)phi+=2*M_PI;
+            while(phi>M_PI)phi-=2*M_PI;
+
+            return CellType{size_t(state[0]/map->get_width_resolution()),
+                            size_t(state[1]/map->get_height_resolution()),
+                            size_t(phi/map->get_phi_resolution())};
+        }
+
+        IndexType state_to_tree_index(const StateType& state){
+            auto phi = state[2];
+            while(phi<-M_PI)phi+=2*M_PI;
+            while(phi>M_PI)phi-=2*M_PI;
+            return IndexType{state[0],state[1],phi/M_PI};
+        }
+
+        double get_heuristic(const StateType &state1, const StateType &state2) {
+            return euclidean_distance(state1, state2)/v_max_;
+        }
+
+
+
+
 
 
     private:
@@ -262,6 +296,22 @@ namespace acsr {
         ControlType random_control(){
             auto& rnd = acsr::Random::get_instance();
             return ControlType{rnd.random_value(delta_min_,delta_max_),rnd.random_value(v_min_,v_max_)};
+        }
+
+        template<class MAP>
+        CellType state_to_cell(std::shared_ptr<MAP> map, const StateType& state){
+            double phi = state[2];
+
+            while(phi<-M_PI)phi+=2*M_PI;
+            while(phi>M_PI)phi-=2*M_PI;
+
+            return CellType{size_t(state[0]/map->get_width_resolution()),
+                            size_t(state[1]/map->get_height_resolution()),
+                            size_t(phi/map->get_phi_resolution())};
+        }
+
+        double get_heuristic(const StateType &state1, const StateType &state2) {
+            return euclidean_distance(state1, state2)/v_max_;
         }
 
     private:

@@ -16,31 +16,35 @@ namespace acsr {
     /***
      * abstract class for planner
      */
-    template<typename T,size_t nx,size_t nu,size_t CELL_DIMENSION,size_t TREE_INDEX_DIMENSION>
-    class Planner {
-    protected:
-        using StateType = std::array<T,nx>;
-        using ControlType = std::array<T,nu>;
-        using TreeNodeType = TreeNode<T,nx,nu>;
-        
+    template<typename DynamicsModel,typename Map>
+    struct Planner {
+    public:
+        constexpr static size_t nx_=DynamicsModel::nx;
+        constexpr static size_t nu_=DynamicsModel::nu;
 
-        using NodeType = Node<T,nx>;
+    //protected:
+        using StateType = std::array<double,nx_>;
+        using ControlType = std::array<double,nu_>;
+        using TreeNodeType = TreeNode<double,nx_,nu_>;
+        using TreeNodePtr = std::shared_ptr<TreeNodeType>;
+        using NodeType = Node<double,nx_>;
         using NodePtr = std::shared_ptr<NodeType>;
         
     protected:
-        std::shared_ptr<acsr::DynamicsModel<T,nx,nu,CELL_DIMENSION,TREE_INDEX_DIMENSION>> dynamic_system_; ///nanowire system
+        std::shared_ptr<DynamicsModel> dynamics_model_ptr_; ///nanowire system
+        std::shared_ptr<Map> map_ptr_;
         //std::shared_ptr<PlannerConnection<nx,nu>> planner_connection_;/// connecting segment
 
         StateType init_state_;///start state
         StateType target_state_;///target state
-        T goal_radius_;///goal radius
+        double goal_radius_;///goal radius
 
         double best_cost_ = std::numeric_limits<double>::max();
-        std::pair<std::shared_ptr<TreeNode<T,nx,nu>>, std::shared_ptr<TreeNode<T,nx,nu>>> best_goal_;///best goals
+        std::pair<std::shared_ptr<TreeNodeType>, std::shared_ptr<TreeNodeType>> best_goal_;///best goals
         std::pair<unsigned long, unsigned long> number_of_nodes_;///nodes on kdtree
         bool is_bi_tree_planner_ = false; ///flag to indicate bi-tree
         bool is_optimized_connect_ = false;///flag to indicate adopting BVP to connect two trees
-        T optimization_distance_;
+        double optimization_distance_;
         /// a flag to indicate the planner is stopped. This flag is used to terminate long time process
         std::atomic_bool run_flag_;
 
@@ -48,12 +52,12 @@ namespace acsr {
         std::vector<ControlType> connect_control_;
         std::vector<double> connect_duration_;
 
-        void setOpitmization(bool is_optimized,T distance){
+        void set_opitmization(bool is_optimized,double distance){
             is_optimized_connect_ = is_optimized;
             optimization_distance_ = distance;
         }
 
-        void setBiTree(bool bi){
+        void set_bi_tree(bool bi){
             is_bi_tree_planner_ = bi;
         }
 
@@ -62,7 +66,7 @@ namespace acsr {
          * @param node
          * @return
          */
-        bool isInSolutionPath(std::shared_ptr<TreeNode<T,nx,nu>> node) {
+        bool is_in_solution_path(std::shared_ptr<TreeNodeType> node) {
             if (best_goal_.first == nullptr) return false;
             if (node->getTreeId() == TreeId::forward) {
                 auto it = best_goal_.first;
@@ -126,7 +130,9 @@ public:
          * construct
          * @param system
          */
-        explicit Planner(std::shared_ptr<DynamicsModel<T,nx,nu,CELL_DIMENSION,TREE_INDEX_DIMENSION>> system,T goal_radius):dynamic_system_(system),
+        explicit Planner(std::shared_ptr<DynamicsModel> dynamics_model_ptr,std::shared_ptr<Map> map_ptr,double goal_radius)
+            :dynamics_model_ptr_(dynamics_model_ptr),
+            map_ptr_(map_ptr),
             run_flag_(false),
             goal_radius_(goal_radius){
         }
@@ -142,17 +148,17 @@ public:
         /***
          * one forward step. this function can be called in a while loop for a forward propagating process
          */
-        virtual void forwardStep() = 0;
+        virtual void forward_step() = 0;
 
         /***
          * one backward step. this function can be called in a while loop for a backward propagating process
          */
-        virtual void backwardStep() = 0;
+        virtual void backward_step() = 0;
 
         /***
          * one connecting step. this function can be called in a while loop for a connecting process
          */
-        virtual void connectingStep() = 0;
+        virtual void connecting_step() = 0;
 
         virtual void reset()=0;
 
@@ -160,7 +166,7 @@ public:
          * get the current numbers of nodes
          * @return a pair of nodes on forward tree and nodes on backward tree
          */
-        virtual std::pair<unsigned long, unsigned long> getNodeCount() {
+        virtual std::pair<unsigned long, unsigned long> get_node_count() {
             return number_of_nodes_;
         }
 
@@ -168,14 +174,14 @@ public:
          *
          * @return goal radius
          */
-        virtual T getGoalRadius() const {
+        virtual double get_goal_radius() const {
             return goal_radius_;
         }
 
         /***
          * set goal radius
          */
-        virtual void setGoalRadius(T goal_radius) {
+        virtual void set_goal_radius(double goal_radius) {
             goal_radius_ = goal_radius;
         }
 
@@ -183,14 +189,14 @@ public:
          * get start state
          * @return
          */
-        virtual StateType getStartState() const {
+        virtual StateType get_start_state() const {
             return init_state_;
         }
 
         /***
          * set start state
          */
-        virtual void setStartState(const StateType &init_state) {
+        virtual void set_start_state(const StateType &init_state) {
             init_state_ = init_state;
         }
 
@@ -198,14 +204,14 @@ public:
          * get target state
          * @return
          */
-        virtual StateType getTargetState() const {
+        virtual StateType get_target_state() const {
             return target_state_;
         }
 
         /***
          * set target state
          */
-        virtual void setTargetState(const StateType &target_state) {
+        virtual void set_target_state(const StateType &target_state) {
             target_state_ = target_state;
         }
 
@@ -355,7 +361,7 @@ public:
             }
         }*/
 
-        double getBestCost() const{
+        double get_best_cost() const{
             return best_cost_;
         }
 
@@ -363,15 +369,15 @@ public:
          * notify the planner to stop. here the run_flag can be set to false. Also can call a function to stop the process in dynamic system
          */
         virtual void stop() {
-            run_flag_ = false;
+            run_flag_.store(false);
             //dynamic_system_->stop();            
         }
 
-        virtual bool isRunning(){
-            return run_flag_;
+        virtual bool is_running(){
+            return run_flag_.load();
         }
 
-        bool findSolution(){            
+        bool is_find_solution(){
             return best_cost_<100000.0;
         }
 

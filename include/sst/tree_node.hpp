@@ -99,7 +99,7 @@ namespace acsr {
          * get the state
          * @return
          */
-        virtual std::array<T,nx> getState() const{
+        virtual std::array<T,nx> get_state() const{
             return state_;
         }
 
@@ -154,7 +154,7 @@ namespace acsr {
          * set the parent of this node
          * @param parent
          */
-        void setParent(const std::shared_ptr <TreeNode<T,nx,nu>> &parent) {
+        void set_parent(const std::shared_ptr <TreeNode<T,nx,nu>> &parent) {
             parent_ = parent;
         }
 
@@ -162,7 +162,7 @@ namespace acsr {
          * get parent
          * @return
          */
-        std::shared_ptr <TreeNode<T,nx,nu>> getParent() const {
+        std::shared_ptr <TreeNode<T,nx,nu>> get_parent() const {
             if (!parent_.expired())
                 return parent_.lock();
             else
@@ -172,7 +172,7 @@ namespace acsr {
         /***
          * set node  cost
          */
-        void setCost(T cost) {
+        void set_cost(T cost) {
             cost_ = cost;
         }
 
@@ -180,7 +180,7 @@ namespace acsr {
          * get node cost
          * @return
          */
-        T getCost() const {
+        T get_cost() const {
             return cost_;
         }
 
@@ -188,7 +188,7 @@ namespace acsr {
          * add a child
          * @param child a child node
          */
-        void addChild(const std::shared_ptr <TreeNode<T,nx,nu>> &child) {
+        void add_child(const std::shared_ptr <TreeNode<T,nx,nu>> &child) {
             children_.emplace_back(child);
         }
 
@@ -196,14 +196,14 @@ namespace acsr {
          * remove a child
          * @param child
          */
-        void removeChild(std::shared_ptr <TreeNode<T,nx,nu>> &child) {
+        void remove_child(std::shared_ptr <TreeNode<T,nx,nu>> &child) {
             children_.remove(child);
         }
 
         /***
          * clean the children
          */
-        void clearChildren() {
+        void clear_children() {
             children_.clear();
         }
 
@@ -211,7 +211,7 @@ namespace acsr {
          * get the children vector
          * @return
          */
-        std::list <std::shared_ptr <TreeNode<T,nx,nu>>> getChildren() {
+        std::list <std::shared_ptr <TreeNode<T,nx,nu>>> get_children() {
             return children_;
         }
 
@@ -219,7 +219,7 @@ namespace acsr {
          * get the tree id
          * @return
          */
-        TreeId getTreeId() const {
+        TreeId get_tree_id() const {
             return tree_id_;
         }
 
@@ -227,7 +227,7 @@ namespace acsr {
          * set tree edge
          * @param _edge
          */
-        void setEdge(const TreeEdge<T,nu> &edge) {
+        void set_edge(const TreeEdge<T,nu> &edge) {
             edge_ = edge;
         }
 
@@ -235,7 +235,7 @@ namespace acsr {
          * get the control of the edge
          * @return
          */
-        std::array<T,nu> getEdgeControl() const {
+        std::array<T,nu> get_edge_control() const {
             return edge_.first;
         }
 
@@ -243,7 +243,7 @@ namespace acsr {
          * get the duration of the edge
          * @return
          */
-        T getEdgeDuration() const {
+        T get_edge_duration() const {
             return edge_.second;
         }
 
@@ -279,7 +279,7 @@ namespace acsr {
          * check whether this sstnode active
          * @return
          */
-        bool isActive(){
+        bool is_active(){
             return active_state_;
         }
 
@@ -287,7 +287,7 @@ namespace acsr {
          * set activeness
          * @param state
          */
-        void setActive(bool state){
+        void set_active(bool state){
             active_state_ = state;
         }
 

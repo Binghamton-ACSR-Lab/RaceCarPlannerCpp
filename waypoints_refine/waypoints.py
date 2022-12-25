@@ -115,7 +115,7 @@ for i in range(0,total_its):
         base_length,
         base_radius,
         density,
-        0.0,  # internal damping constant, deprecated in v0.3.0
+        10.0,  # internal damping constant, deprecated in v0.3.0
         youngs_modulus,
         shear_modulus=shear_modulus,
         position=positions,
@@ -127,12 +127,13 @@ for i in range(0,total_its):
     waypoints_sim.constrain(waypoints_rod).using(
         FixedConstraint,
         constrained_position_idx=(0,-1),
-        constrained_director_idx=(0,)
+        constrained_director_idx=(0,1,2)
         )
     waypoints_sim.constrain(waypoints_rod).using(
         GeneralConstraint,
         constrained_position_idx=(1,),
-        translational_constraint_selector=np.array([True, True, False]),
+        translational_constraint_selector=np.array([False, True, False]),
+
     )
     # waypoints_sim.constrain(waypoints_rod).using(
     #     GeneralConstraint,
