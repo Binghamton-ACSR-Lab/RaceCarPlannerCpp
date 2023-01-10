@@ -4,6 +4,9 @@
 
 #ifndef RACECARPLANNER_SHAPE_HPP
 #define RACECARPLANNER_SHAPE_HPP
+#include <vector>
+#include <math.h>
+#include <algorithm>
 
 namespace acsr{
     template<typename T>

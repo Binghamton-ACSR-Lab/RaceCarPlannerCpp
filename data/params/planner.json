@@ -1,0 +1,10 @@
+{
+  "goal_radius": 0.3,
+  "sst": {
+    "step_size": 0.1,
+    "min_time_steps": 2,
+    "max_time_steps": 10,
+    "sst_delta_near": 0.2,
+    "optimization_distance":0.6
+  }
+}

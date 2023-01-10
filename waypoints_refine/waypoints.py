@@ -1,34 +1,42 @@
+import math
+
 import numpy as np
 import matplotlib.pyplot as plt
+from acsr_geometry import ObstacleForce
+import shapely
 
-wheel_base = 0.35
-
-
-def model(init_state, control):
-    return np.array([control[1]*np.cos(control[0]+init_state[2]),
-                     control[1]*np.sin(control[0]+init_state[2]),
-                     control[1]*np.tan(control[0])/wheel_base])
-
-
-def generate_path():
-
-    t = np.array([2.5, 0.5, 1.2, 0.7, 0.8])
-    init_state = np.array([5.0, 0.0, np.pi/2])
-    states = [init_state]
-    steps = np.array(t/0.1, dtype=int)
-
-    controls = np.array([[-0.4, 0.5], [-0.1, 1.0], [-0.2, 1.0], [0.3, 1.0], [-0.2, 1.0]])
-
-    for i in range(0, 5):
-        for j in range(0, steps[i]):
-            init_state = init_state+0.1*model(init_state, controls[i])
-            states.append(np.copy(init_state))
-
-    return states
+# with open('single.csv') as f:
+#     lines=f.readlines()
+#     for line in lines:
+#         myarray = np.fromstring(line, dtype=float, sep=',')
+#         print(myarray)
+#
+# def model(init_state, control):
+#     wheel_base = 0.35
+#     return np.array([control[1]*np.cos(control[0]+init_state[2]),
+#                      control[1]*np.sin(control[0]+init_state[2]),
+#                      control[1]*np.tan(control[0])/wheel_base])
 
 
-state = generate_path()
-np_state = np.array(state)
+# def generate_path():
+#
+#     t = np.array([2.5, 0.5, 1.2, 0.7, 0.8])
+#     init_state = np.array([5.0, 0.0, np.pi/2])
+#     states = [init_state]
+#     steps = np.array(t/0.1, dtype=int)
+#
+#     controls = np.array([[-0.4, 0.5], [-0.1, 1.0], [-0.2, 1.0], [0.3, 1.0], [-0.2, 1.0]])
+#
+#     for i in range(0, 5):
+#         for j in range(0, steps[i]):
+#             init_state = init_state+0.1*model(init_state, controls[i])
+#             states.append(np.copy(init_state))
+#
+#     return states
+#
+#
+# state = generate_path()
+# np_state = np.array(state)
 # plt.plot(np_state[:, 0], np_state[:, 1])
 # plt.show()
 
@@ -36,49 +44,10 @@ np_state = np.array(state)
 from elastica import *
 
 class WaypointsRefineSimulator(
-    BaseSystemCollection, Constraints, Forcing, CallBacks
+    BaseSystemCollection, Constraints, Forcing, Damping,CallBacks
 ):
     pass
 
-
-final_time = 1
-dt = 0.01
-
-
-# setting up test params
-n_elem = len(state)-1
-start = np.copy(state[0])
-# start[2]=0
-
-print("start:")
-print(start)
-
-phi0 = start[2]
-direction = np.array([np.cos(phi0), np.sin(phi0), 0.0])
-normal = np.array([0.0, 0.0, 1.0])
-
-start[2]=0
-
-
-print("direction:")
-print(direction)
-print("normal:")
-print(normal)
-
-base_length = 0.1
-base_radius = 0.2
-base_area = np.pi * base_radius ** 2
-density = 1000
-youngs_modulus = 1e4
-# For shear modulus of 1e4, nu is 99!
-poisson_ratio = 0.03
-shear_modulus = youngs_modulus / (poisson_ratio + 1.0)
-
-positions = np_state.transpose()
-directions = np.copy(positions)
-positions[2, :] = 0
-
-# Add call backs
 class WaypointsRefineCallBack(CallBackBaseClass):
     """
     Tracks the velocity norms of the rod
@@ -100,73 +69,138 @@ class WaypointsRefineCallBack(CallBackBaseClass):
             )
             return
 
-plot_history=[np.copy(positions)]
 
-total_its = 10000
-for i in range(0,total_its):
-    lengths = np.linalg.norm(positions[0:2,1:]-positions[0:2,0:-1],axis=0)
-    rest_lengths = lengths*0.97
-    waypoints_sim = WaypointsRefineSimulator()
-    waypoints_rod = CosseratRod.straight_rod(
-        n_elem,
-        start,
-        direction,
-        normal,
-        base_length,
-        base_radius,
-        density,
-        10.0,  # internal damping constant, deprecated in v0.3.0
-        youngs_modulus,
-        shear_modulus=shear_modulus,
-        position=positions,
-        # rest_lengths = rest_lengths,
-    )
-    waypoints_rod.rest_lengths = rest_lengths
+def process(state,obstacls,plot = False):
+    n_elem = len(state)-1
+    positions = np.zeros((3,n_elem+1))
+    positions[0:2,:] = state.T[0:2,:]
 
-    waypoints_sim.append(waypoints_rod)
-    waypoints_sim.constrain(waypoints_rod).using(
-        FixedConstraint,
-        constrained_position_idx=(0,-1),
-        constrained_director_idx=(0,1,2)
+
+    if state.shape[1]>2:
+        phi0 = state[0,2]
+    else:
+        phi0 =math.atan2(state[1,1]-state[0,1],state[1,0]-state[0,0])
+
+    start=np.zeros((3,))
+    start[0:2]=state[0]
+
+    direction = np.array([np.cos(phi0), np.sin(phi0), 0.0])
+    normal = np.array([0.0, 0.0, 1.0])
+    final_time = 1
+    dt = 0.01
+
+    base_length = 0.1
+    base_radius = 0.2
+    base_area = np.pi * base_radius ** 2
+    density = 1e5
+    youngs_modulus = 1e6
+    # For shear modulus of 1e4, nu is 99!
+    poisson_ratio = 0.03
+    shear_modulus = youngs_modulus / (poisson_ratio + 1.0)
+
+
+    plot_history=[np.copy(positions)]
+
+    total_its = 5
+    for i in range(0,total_its):
+        lengths = np.linalg.norm(positions[0:2,1:]-positions[0:2,0:-1],axis=0)
+        rest_lengths = lengths*0.2
+        waypoints_sim = WaypointsRefineSimulator()
+        waypoints_rod = CosseratRod.straight_rod(
+            n_elem,
+            start,
+            direction,
+            normal,
+            base_length,
+            base_radius,
+            density,
+            0.0,  # internal damping constant, deprecated in v0.3.0
+            youngs_modulus,
+            shear_modulus=shear_modulus,
+            position=positions,
+            # rest_lengths = rest_lengths,
         )
-    waypoints_sim.constrain(waypoints_rod).using(
-        GeneralConstraint,
-        constrained_position_idx=(1,),
-        translational_constraint_selector=np.array([False, True, False]),
+        waypoints_rod.rest_lengths = rest_lengths
 
-    )
-    # waypoints_sim.constrain(waypoints_rod).using(
-    #     GeneralConstraint,
-    #     constrained_position_idx=(-1,),
-    #     translational_constraint_selector=np.array([True, True, True]),
-    # )
-    # for i in range(1,n_elem-2):
-    #     waypoints_sim.constrain(waypoints_rod).using(
-    #         GeneralConstraint,
-    #         constrained_position_idx=(i,),
-    #         # constrained_director_idx=(i,),
-    #         translational_constraint_selector=np.array([False, False, True]),
-    #         # rotational_constraint_selector=np.array([True, True, False]),
-    #     )
+        waypoints_sim.append(waypoints_rod)
+        waypoints_sim.constrain(waypoints_rod).using(
+            FixedConstraint,
+            constrained_position_idx=(0,-1),
+            constrained_director_idx=(0,),
 
-    recorded_history = defaultdict(list)
-    recorded_history["position"].append(waypoints_rod.position_collection.copy())
+        )
+        waypoints_sim.dampen(waypoints_rod).using(
+            AnalyticalLinearDamper,
+            damping_constant=1.0,
+            time_step=dt,
+        )
+        waypoints_sim.constrain(waypoints_rod).using(
+            GeneralConstraint,
+            constrained_position_idx=(1,),
+            translational_constraint_selector=np.array([False, True, True]),
+        )
+        waypoints_sim.add_forcing_to(waypoints_rod).using(
+            ObstacleForce,
+            data=obstacls
+        )
+        # waypoints_sim.constrain(waypoints_rod).using(
+        #     GeneralConstraint,
+        #     constrained_position_idx=(-1,),
+        #     translational_constraint_selector=np.array([True, True, True]),
+        # )
+        # for i in range(1,n_elem-2):
+        #     waypoints_sim.constrain(waypoints_rod).using(
+        #         GeneralConstraint,
+        #         constrained_position_idx=(i,),
+        #         # constrained_director_idx=(i,),
+        #         translational_constraint_selector=np.array([False, False, True]),
+        #         # rotational_constraint_selector=np.array([True, True, False]),
+        #     )
 
-    total_steps = 20
-    waypoints_sim.collect_diagnostics(waypoints_rod).using(
-        WaypointsRefineCallBack, step_skip=1, callback_params=recorded_history
-    )
+        recorded_history = defaultdict(list)
+        recorded_history["position"].append(waypoints_rod.position_collection.copy())
 
-    waypoints_sim.finalize()
-    timestepper = PositionVerlet()
-    # timestepper = PEFRL()
-    integrate(timestepper, waypoints_sim, 0.02, total_steps,progress_bar=False)
+        total_steps = 1000
+        waypoints_sim.collect_diagnostics(waypoints_rod).using(
+            WaypointsRefineCallBack, step_skip=1, callback_params=recorded_history
+        )
 
-    positions = recorded_history["position"][-1]
-    if i%int(total_its/5)==0:
-        plot_history.append(positions)
+        waypoints_sim.finalize()
+        timestepper = PositionVerlet()
+        # timestepper = PEFRL()
+        integrate(timestepper, waypoints_sim, 0.5, total_steps,progress_bar=False)
+        positions = recorded_history["position"][-1]
 
+        if plot:
+            plot_history.append(positions)
 
+    if plot:
+        shapes=[]
+        for d in obstacls:
+            d = np.reshape(d,(-1,2))
+            shapes.append(shapely.Polygon(d))
+        for poly in shapes:
+            x,y = poly.exterior.xy
+            plt.plot(x,y,'-g')
+
+        for index,position in enumerate(plot_history):
+            plt.plot(position[0,:],position[1,:],label="{}".format(index))
+        plt.legend()
+        plt.show()
+
+    return positions
+
+if __name__=='__main__':
+
+    obstacles=[]
+    with open('../data/map/refined_obstacle.txt') as f:
+        lines=f.readlines()
+    for line in lines:
+        myarray = np.fromstring(line, dtype=float, sep=',')
+        obstacles.append(myarray)
+
+    states = np.loadtxt("../data/map/sst_data.txt")
+    process(states,obstacles,True)
 
 
 # end_force_x = 1.0
@@ -197,7 +231,3 @@ for i in range(0,total_its):
 
 
 
-for index,position in enumerate(plot_history):
-    plt.plot(position[0,:],position[1,:],label="{}".format(index))
-plt.legend()
-plt.show()

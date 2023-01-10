@@ -19,8 +19,8 @@ namespace acsr {
     template<typename DynamicsModel,typename Map>
     struct Planner {
     public:
-        constexpr static size_t nx_=DynamicsModel::nx;
-        constexpr static size_t nu_=DynamicsModel::nu;
+        constexpr static size_t nx_=DynamicsModel::nx_;
+        constexpr static size_t nu_=DynamicsModel::nu_;
 
     //protected:
         using StateType = std::array<double,nx_>;

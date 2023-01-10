@@ -10,6 +10,7 @@
 #include <iostream>
 #include "shape.hpp"
 #include <boost/geometry.hpp>
+#include "utility.hpp"
 
 namespace bg = boost::geometry;
 typedef bg::model::point<double, 2, bg::cs::cartesian> point_t;
@@ -162,6 +163,18 @@ namespace acsr{
 
         void add_polygon(std::initializer_list<point_t> pts){
             shapes.push_back(polygon_t{pts});
+        }
+
+        double get_width_resolution() const{
+            return 0.2;
+        }
+
+        double get_height_resolution() const{
+            return 0.2;
+        }
+
+        double get_phi_resolution() const{
+            return M_PI/18;
         }
 
 

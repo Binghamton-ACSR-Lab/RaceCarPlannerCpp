@@ -14,10 +14,10 @@
 #include "array_adaptor.hpp"
 #include <fstream>
 #include <nlohmann/json.hpp>
-//#include "node_adaptor.hpp"
+#include "node_adaptor.hpp"
 
 
-
+BOOST_GEOMETRY_REGISTER_ARRAY_CS(cs::cartesian)
 using nlohmann::json;
 
 namespace acsr{
@@ -34,11 +34,11 @@ namespace acsr{
     template<size_t nc>
     struct GridHash
     {
-        std::size_t operator()(const std::array<int,nc> & k) const
+        std::size_t operator()(const std::array<size_t ,nc> & k) const
         {
             size_t seed = 0;
             for (auto elem:k) {
-                seed ^= std::hash<int>()(elem) + 0x9e3779b9 + (seed << 6) + (seed >> 2);
+                seed ^= std::hash<size_t>()(elem) + 0x9e3779b9 + (seed << 6) + (seed >> 2);
             }
             return seed;
         }
@@ -51,8 +51,8 @@ namespace acsr{
         using Planner<DynamicsModel,Map>::nx_;
         using Planner<DynamicsModel,Map>::nu_;
 
-        constexpr static size_t nc_=DynamicsModel::nc;
-        constexpr static size_t ni_=DynamicsModel::ni;
+        constexpr static size_t nc_=DynamicsModel::nc_;
+        constexpr static size_t ni_=DynamicsModel::ni_;
 
         using Planner<DynamicsModel,Map>::dynamics_model_ptr_;
         using Planner<DynamicsModel,Map>::map_ptr_;
@@ -79,7 +79,7 @@ namespace acsr{
         //using StateType = std::array<T,STATE_DIMENSION>;
         //using ControlType = std::array<T,CONTROL_DIMENSION>;
         using TreeIndexType = std::array<double,ni_>;
-        using CellType = std::array<int,nc_>;
+        using CellType = std::array<size_t ,nc_>;
 
         //using NodeType = Node<T,STATE_DIMENSION>;
         //using NodePtr = std::shared_ptr<NodeType>;
@@ -454,17 +454,17 @@ namespace acsr{
          * constructor
          * @param dynamic_system
          */
-        explicit SST(std::shared_ptr<DynamicsModel> dynamic_model_ptr,std::shared_ptr<Map> map_ptr,const json& params):
-            Planner<DynamicsModel,Map>(dynamic_model_ptr,map_ptr,params.at("goal_radius"))
+        explicit SST(std::shared_ptr<DynamicsModel> dynamic_model_ptr,std::shared_ptr<Map> map_ptr,double goal_radius, const json& sst_params):
+            Planner<DynamicsModel,Map>(dynamic_model_ptr,map_ptr,goal_radius)
         {
-            step_size_ = params.at("step_size");
-            min_time_steps_ = params.at("min_time_steps");
-            max_time_steps_ = params.at("max_time_steps");
-            sst_delta_near_ = params.at("sst_delta_near");
-            if(params.contains("optimization_distance"))
-                optimization_distance_ = params.at("optimization_distance");
+            step_size_ = sst_params.at("step_size");
+            min_time_steps_ = sst_params.at("min_time_steps");
+            max_time_steps_ = sst_params.at("max_time_steps");
+            sst_delta_near_ = sst_params.at("sst_delta_near");
+            if(sst_params.contains("optimization_distance"))
+                optimization_distance_ = sst_params.at("optimization_distance");
             else
-                optimization_distance_=params.at("goal_radius");
+                optimization_distance_=goal_radius;
         }
 
         /***
@@ -533,7 +533,7 @@ namespace acsr{
                 parent = get_near_node_by_count(temp_state,TreeId::forward,1).front();
             }
 
-            auto steps = acsr::Random::random_value(min_time_steps_,max_time_steps_);
+            auto steps = acsr::Random::get_instance().random_value(min_time_steps_,max_time_steps_);
             auto result = forward_propagate(parent->get_state(),temp_control,step_size_,steps);
             //double duration;            
             if(result.first){

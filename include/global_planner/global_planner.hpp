@@ -22,8 +22,8 @@ namespace acsr{
     template <class DYNAMICS>
     class AcsrGlobalPlanner{
     public:
-        const int nx_=DYNAMICS::nx;
-        const int nu_=DYNAMICS::nu;
+        const size_t nx_=DYNAMICS::nx;
+        const size_t nu_=DYNAMICS::nu;
 
         AcsrGlobalPlanner()=default;
 

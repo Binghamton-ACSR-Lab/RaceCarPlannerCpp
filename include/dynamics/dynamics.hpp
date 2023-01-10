@@ -20,10 +20,10 @@ namespace acsr {
     template<size_t nx, size_t nu, size_t nc=3,size_t ni=3>
     struct Dynamics {
     public:
-        static constexpr int nx_ = nx;
-        static constexpr int nu_ = nu;
-        static constexpr int nc_ = nc;
-        static constexpr int ni_ = ni;
+        static constexpr size_t nx_ = nx;
+        static constexpr size_t nu_ = nu;
+        static constexpr size_t nc_ = nc;
+        static constexpr size_t ni_ = ni;
 
         using StateType = std::array<double,nx>;
         using ControlType = std::array<double,nu>;
@@ -50,6 +50,7 @@ namespace acsr {
 //        using ControlType = std::array<double,2>;
 //        using CellType = std::array<int,CELL_DIMENSION>;
 //        using TreeIndexType = std::array<double,TREE_INDEX_DIMENSION>;
+
 
         BicycleKinematic() = default;
 
@@ -209,11 +210,11 @@ namespace acsr {
             else
                 wheel_base_ = double(params.at("lf"))+double(params.at("lr"));
 
-            v_min_=params.at("v_min");
-            v_max_=params.at("v_max");
+            v_min_=params["constraint"].at("v_min");
+            v_max_=params["constraint"].at("v_max");
 
-            delta_min_=params.at("delta_min");
-            delta_max_=params.at("delta_max");
+            delta_min_=params["constraint"].at("delta_min");
+            delta_max_=params["constraint"].at("delta_max");
 
         }
 
