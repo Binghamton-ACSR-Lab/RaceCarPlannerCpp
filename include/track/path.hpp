@@ -24,16 +24,26 @@ namespace acsr {
     public:
         Path() = delete;
 
-        explicit Path(DM pts,bool closed=false) {
+        explicit Path(DM pts,DM direction,bool closed=false) {
             waypoints_=pts;
-            if(waypoints_.rows()!=2){
-                assert(pts.columns()==2);
+            if(waypoints_.columns()!=2){
+                assert(pts.rows()==2);
                 waypoints_ = pts.T();
             }else{
                 waypoints_=pts;
             }
+            if(direction.is_empty())
+                f_xy = get_parametric_function(waypoints_);
+            else {
+                direction_ = DM::reshape(direction,2,1);
+                direction_ = direction_/DM::norm_2(direction_);
+                std::cout<<"waypoint:\n"<<waypoints_<<std::endl;
+                std::cout<<"direction:\n"<<direction_<<std::endl;
 
-            f_xy = get_parametric_function(waypoints_);
+                f_xy = get_parametric_function_with_direction(waypoints_, direction_);
+            }
+
+
             t_max = waypoints_.columns()-(closed?0:1);
 
 
@@ -219,6 +229,7 @@ namespace acsr {
         casadi::Function f_xy_to_tn;
     private:
         casadi::DM waypoints_;
+        casadi::DM direction_;
         double t_max;
         double s_max;
 
@@ -252,8 +263,122 @@ namespace acsr {
             auto g = casadi::MX::vertcat({fx(t)[0],fy(t)[0]});
             casadi::Function f_pt_t("f", casadi::MXVector{t}, casadi::MXVector{g}, {"t"}, {"pt"});
             return f_pt_t;
-
         }
+
+        static casadi::Function get_parametric_function_with_direction(const casadi::DM& waypoints,const casadi::DM& direction){
+            DM p1,p2;
+            std::tie(p1,p2) = direct_spline(waypoints,direction);
+            return parametric_function(waypoints,p1,p2);
+        }
+
+        static std::pair<DM,DM> natural_spline(const casadi::DM& waypoints){
+            assert(waypoints.columns()==2);
+            // dm_waypoints = ca.DM(waypoints)
+            // if dm_waypoints.shape[1]>3:
+            //     dm_waypoints = dm_waypoints.T()
+
+            // dm_waypoints = dm_waypoints[:,0:2]
+            auto n = waypoints.rows()-1;
+
+            auto opti = casadi::Opti();
+            auto P1 = opti.variable(n,2);
+            auto P2 = opti.variable(n,2);
+
+            // opti.subject_to(waypoints[0,:]-2*P1[0,:]+P2[0,:]==0)
+            // opti.subject_to(P1[-1,:]-2*P2[-1,:]+dm_waypoints[n,:]==0)
+
+            opti.subject_to(waypoints(0,Slice())-2*P1(0,Slice())+P2(0,Slice())==0);
+            opti.subject_to(P1(n-1,Slice())-2*P2(n-1,Slice())+waypoints(n,Slice())==0);
+
+            for(auto i=1;i<n;++i){
+                opti.subject_to(P1(i,Slice())+P2(i-1,Slice())==2*waypoints(i,Slice()));
+                opti.subject_to(P1(i-1,Slice())+2*P1(i,Slice())==2*P2(i-1,Slice())+P2(i,Slice()));
+            }
+
+            // for i in range(1,n):
+            //     opti.subject_to(P1[i,:]+P2[i-1,:]==2*dm_waypoints[i,:])
+            //     opti.subject_to(P1[i-1,:]+2*P1[i,:]==2*P2[i-1,:]+P2[i,:])
+
+            opti.solver("ipopt");
+            auto sol = opti.solve();
+
+            auto dm_p1 = sol.value(P1);
+            auto dm_p2 = sol.value(P2);
+            return std::make_pair(dm_p1,dm_p2);
+        }
+
+        static std::pair<DM,DM> direct_spline(const casadi::DM& waypoints,const casadi::DM& direct){
+            std::cout<<waypoints.columns()<<std::endl;
+            assert(waypoints.columns()==2);
+
+            DM p1_bar,p2_bar;
+            std::tie(p1_bar,p2_bar) = natural_spline(waypoints);
+
+            auto n = waypoints.rows()-1;
+
+            auto opti = Opti();
+            auto P1 = opti.variable(n,2);
+            auto P2 = opti.variable(n,2);
+
+            auto dm_direct = DM::reshape(direct,1,2);
+            dm_direct = dm_direct/DM::norm_2(dm_direct);
+
+            // opti.subject_to((P1[0,:]-dm_waypoints[0,:])/ca.norm_2(P1[0,:]-dm_waypoints[0,:])==dm_direct)
+            // opti.subject_to(P1[-1,:]-2*P2[-1,:]+dm_waypoints[-1,:]==0)
+
+            opti.subject_to((P1(0,Slice())-waypoints(0,Slice()))/MX::norm_2(P1(0,Slice())-waypoints(0,Slice()))==dm_direct);
+            opti.subject_to(P1(n-1,Slice())-2*P2(n-1,Slice())+waypoints(n,Slice())==0);
+
+            // for i in range(1,n):
+            //     opti.subject_to(P1[i,:]+P2[i-1,:]==2*dm_waypoints[i,:])
+            //     opti.subject_to(P1[i-1,:]+2*P1[i,:]==2*P2[i-1,:]+P2[i,:])
+
+            for(auto i=1;i<n;++i){
+                opti.subject_to(P1(i,Slice())+P2(i-1,Slice())==2*waypoints(i,Slice()));
+                opti.subject_to(P1(i-1,Slice())+2*P1(i,Slice())==2*P2(i-1,Slice())+P2(i,Slice()));
+            }
+
+            auto alpha = 1.0;
+            auto beta = 0.5;
+            auto dp1 = P1-p1_bar;
+            auto dp2 = P2-p2_bar;
+            auto obj2 = MX::dot(dp1(Slice(),0),dp1(Slice(),0))+MX::dot(dp1(Slice(),1),dp1(Slice(),1))+MX::dot(dp2(Slice(),0),dp2(Slice(),0))+MX::dot(dp2(Slice(),1),dp2(Slice(),1));
+            opti.minimize(alpha*MX::dot(waypoints(0,Slice())-2*P1(0,Slice())+P2(0,Slice()),waypoints(0,Slice())-2*P1(0,Slice())+P2(0,Slice()))+beta*obj2);
+
+            opti.set_initial(P1,p1_bar);
+            opti.set_initial(P2,p2_bar);
+
+            opti.solver("ipopt");
+            auto sol = opti.solve();
+
+            auto dm_p1 = sol.value(P1);
+            auto dm_p2 = sol.value(P2);
+            return std::make_pair(dm_p1,dm_p2);
+        }
+
+        static Function parametric_function(const casadi::DM& waypoints,const casadi::DM& p1,const casadi::DM& p2) {
+            assert(waypoints.columns()==2);
+            auto mx_waypoints = MX(waypoints);
+
+            auto mx_p1 = MX(p1);
+            auto mx_p2 = MX(p2);
+
+            auto t = MX::sym("t");
+            auto n = waypoints.rows();
+            auto tau = MX::mod(t, n);
+            auto i = MX::floor(tau);
+            auto a = mx_waypoints(i, Slice());
+            auto b = mx_p1(i, Slice());
+            auto c = mx_p2(i, Slice());
+            auto i1 = MX::mod(i + 1, n);
+            auto d = mx_waypoints(i1,Slice());
+            auto g = MX::pow(1 - (tau - i), 3) * a + 3 * MX::pow(1 - (tau - i), 2) * (tau - i) * b +
+                3 * (1 - (tau - i)) * MX::pow(tau - i, 2) * c + MX::pow(tau - i, 3) * d;
+            return Function("f_xt",{t},{g});
+        }
+
+
+
     };
 }
 

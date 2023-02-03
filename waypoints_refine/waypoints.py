@@ -1,9 +1,10 @@
 import math
-
 import numpy as np
 import matplotlib.pyplot as plt
-from acsr_geometry import ObstacleForce
+#from acsr_geometry import ObstacleForce
 import shapely
+import shapely.ops
+from elastica.external_forces import NoForces
 
 # with open('single.csv') as f:
 #     lines=f.readlines()
@@ -70,7 +71,49 @@ class WaypointsRefineCallBack(CallBackBaseClass):
             return
 
 
-def process(state,obstacls,plot = False):
+class ObstacleForce(NoForces):
+    def __init__(self,data):
+        self.shapes=[]
+        for d in data:
+            d = np.reshape(d,(-1,2))
+            self.shapes.append(shapely.Polygon(d))
+        self.tree = shapely.STRtree(self.shapes)
+        self.k = 10000.0
+
+
+    def apply_forces(self, system, time: np.float64 = 0.0):
+
+        positons = system.position_collection[0:2, :].T
+        tangents = system.tangents[0:2, :].T
+
+
+        pts = [shapely.Point(p[0:2]) for p in positons]
+        indice = self.tree.nearest(pts)
+
+        for i in range(1,len(pts)-1):
+            p1,p2 = shapely.ops.nearest_points(pts[i],self.shapes[indice[i]])
+            distance = shapely.distance(p1,p2)
+            direction = np.array([p1.x-p2.x,p1.y-p2.y,0.0])
+            direction = (direction/np.linalg.norm(direction)).reshape(3,)
+            direction = direction*np.array([tangents[i,1],-tangents[i,0],0.0])
+
+            system.external_forces[:,i]=self.k/distance/distance*direction
+
+def process(init_state,obstacls,plot = False,interp=False,interp_num=10):
+    if interp:
+        interp_state = np.zeros([init_state.shape[0]*interp_num,init_state.shape[1]])
+        x=range(0,len(init_state))
+        xvals = np.linspace(0, len(init_state)-1, interp_num*len(init_state))
+        interp_state[:,0] = np.interp(xvals, x, init_state[:,0])
+        interp_state[:,1] = np.interp(xvals, x, init_state[:,1])
+        if init_state.shape[1]>2:
+            interp_state[:,2] = np.interp(xvals, x, init_state[:,2])
+        state=interp_state#[0:-1,:]
+
+    else:
+        state=init_state
+
+
     n_elem = len(state)-1
     positions = np.zeros((3,n_elem+1))
     positions[0:2,:] = state.T[0:2,:]
@@ -90,21 +133,28 @@ def process(state,obstacls,plot = False):
     dt = 0.01
 
     base_length = 0.1
-    base_radius = 0.2
-    base_area = np.pi * base_radius ** 2
+    base_radius = 200*np.ones((n_elem,))
+    #base_radius[0]=200000
+
+    #base_area = np.pi * base_radius ** 2
     density = 1e5
-    youngs_modulus = 1e6
+    youngs_modulus = 1e7
     # For shear modulus of 1e4, nu is 99!
-    poisson_ratio = 0.03
+    #poisson_ratio = 0.03
+    poisson_ratio = 1
     shear_modulus = youngs_modulus / (poisson_ratio + 1.0)
 
 
     plot_history=[np.copy(positions)]
 
+    lengths = np.linalg.norm(positions[0:2,1:]-positions[0:2,0:-1],axis=0)
+    rest_lengths = lengths*0.9
+
     total_its = 5
     for i in range(0,total_its):
         lengths = np.linalg.norm(positions[0:2,1:]-positions[0:2,0:-1],axis=0)
-        rest_lengths = lengths*0.2
+        #print(min(lengths))
+        rest_lengths = lengths*0.9
         waypoints_sim = WaypointsRefineSimulator()
         waypoints_rod = CosseratRod.straight_rod(
             n_elem,
@@ -131,7 +181,7 @@ def process(state,obstacls,plot = False):
         )
         waypoints_sim.dampen(waypoints_rod).using(
             AnalyticalLinearDamper,
-            damping_constant=1.0,
+            damping_constant=100.0,
             time_step=dt,
         )
         waypoints_sim.constrain(waypoints_rod).using(
@@ -158,9 +208,9 @@ def process(state,obstacls,plot = False):
         #     )
 
         recorded_history = defaultdict(list)
-        recorded_history["position"].append(waypoints_rod.position_collection.copy())
 
-        total_steps = 1000
+
+        total_steps = 100
         waypoints_sim.collect_diagnostics(waypoints_rod).using(
             WaypointsRefineCallBack, step_skip=1, callback_params=recorded_history
         )
@@ -169,10 +219,24 @@ def process(state,obstacls,plot = False):
         timestepper = PositionVerlet()
         # timestepper = PEFRL()
         integrate(timestepper, waypoints_sim, 0.5, total_steps,progress_bar=False)
+
+        recorded_history["position"].append(waypoints_rod.position_collection.copy())
+        recorded_history["direction"].append(waypoints_rod.tangents.copy())
+        recorded_history["director"].append(waypoints_rod.director_collection.copy())
+        recorded_history["kappa"].append(waypoints_rod.kappa.copy())
+
         positions = recorded_history["position"][-1]
 
         if plot:
             plot_history.append(positions)
+
+    directions = recorded_history["direction"][-1]
+    directors = recorded_history["director"][-1]
+    kappa = recorded_history["kappa"][-1]
+
+    lengths = np.linalg.norm(positions[0:2,1:]-positions[0:2,0:-1],axis=0)
+    mid_pts = (positions[0:2,1:]+positions[0:2,0:-1])/2
+    #d2 = (1/kappa)**2-(lengths/2)**2
 
     if plot:
         shapes=[]
@@ -183,8 +247,15 @@ def process(state,obstacls,plot = False):
             x,y = poly.exterior.xy
             plt.plot(x,y,'-g')
 
-        for index,position in enumerate(plot_history):
-            plt.plot(position[0,:],position[1,:],label="{}".format(index))
+        # for index,position in enumerate(plot_history):
+        #     plt.plot(position[0,:],position[1,:],label="{}".format(index))
+        plt.plot(plot_history[0][0,:],plot_history[0][1,:],label="{}".format(0),marker="o")
+        plt.plot(plot_history[-1][0,:],plot_history[-1][1,:],label="{}".format(-1),marker="o")
+
+        for i in range(0,len(directions.T)):
+            plt.arrow(plot_history[-1][0,i],plot_history[-1][1,i],directions[0,i],directions[1,i])
+
+
         plt.legend()
         plt.show()
 
@@ -200,7 +271,7 @@ if __name__=='__main__':
         obstacles.append(myarray)
 
     states = np.loadtxt("../data/map/sst_data.txt")
-    process(states,obstacles,True)
+    process(states,obstacles,True,interp=False,interp_num=3)
 
 
 # end_force_x = 1.0
